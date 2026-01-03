@@ -43,6 +43,7 @@ const TAB_ITEMS = [
   { key: "dify", label: "Dify雛形" },
   { key: "code", label: "Mermaidコード" },
   { key: "json", label: "JSON" },
+  { key: "raw", label: "Raw" },
   { key: "debug", label: "Debug" },
 ];
 
@@ -182,7 +183,6 @@ function computeSteps(flow: FlowJson): string[] {
     if (!visited.has(n.id)) order.push(n.label);
   }
 
-  // UI側で 1. を落としているので、素のラベルで返す
   return order;
 }
 
@@ -230,6 +230,11 @@ export default function ResultPage() {
   const [busy, setBusy] = useState(false);
 
   const canShowDebug = useMemo(() => !!data?.debug, [data]);
+  const rawPrimary = useMemo(() => {
+    const v = (data as any)?.debug?.flow_json_raw ?? (data as any)?.flow_json_raw ?? null;
+    if (v == null) return "";
+    return typeof v === "string" ? v : JSON.stringify(v, null, 2);
+  }, [data]);
 
   useEffect(() => {
     try {
@@ -244,15 +249,17 @@ export default function ResultPage() {
   }, []);
 
   const tabs = useMemo(() => {
-    if (!canShowDebug) return TAB_ITEMS.filter((t) => t.key !== "debug");
+    // debugが無いときは debug/raw を隠す（ユーザーに不要な情報を出さない）
+    if (!canShowDebug) return TAB_ITEMS.filter((t) => t.key !== "debug" && t.key !== "raw");
+    // debugはあるが raw が空なら raw は隠す
+    if (canShowDebug && !rawPrimary) return TAB_ITEMS.filter((t) => t.key !== "raw");
     return TAB_ITEMS;
-  }, [canShowDebug]);
+  }, [canShowDebug, rawPrimary]);
 
-  // --- ここが今回の“根本改善”：flow_json をクライアント側で修復して、表示を上書きできるようにする ---
+  // flow_json をクライアント側で修復して、表示を上書きできるようにする
   const repaired = useMemo(() => {
     if (!data) return { flow: null as FlowJson | null, usedRepair: false };
 
-    // 候補：data.flow_json / data.debug?.flow_json_raw / data.debug?.flow_json / data.debug?.raw など
     const candidates: unknown[] = [
       data.flow_json,
       (data as any)?.flow_json_raw,
@@ -268,7 +275,6 @@ export default function ResultPage() {
         const usedRepair = typeof c === "string" || /```/i.test(String(c ?? ""));
         return { flow: parsed, usedRepair };
       }
-      // 既にオブジェクトで入ってる可能性
       if (isFlowJson(c)) return { flow: c, usedRepair: false };
     }
 
@@ -354,7 +360,6 @@ export default function ResultPage() {
     );
   }
 
-  // 表示は「修復済みがあれば優先」。なければ従来通り data を表示。
   const mermaidCode = computed?.mermaid ?? data.mermaid ?? "";
   const steps = computed?.steps ?? data.steps ?? [];
   const conditions = computed?.conditions ?? data.conditions ?? [];
@@ -480,6 +485,16 @@ export default function ResultPage() {
                 <CopyButton label="Copy" value={jsonText} />
               </div>
               <pre className={styles.pre}>{jsonText}</pre>
+            </div>
+          )}
+
+          {tab === "raw" && (
+            <div>
+              <div className={styles.panelHead2}>
+                <div className={styles.panelTitle}>flow_json_raw（生）</div>
+                <CopyButton label="Copy" value={rawPrimary} />
+              </div>
+              <pre className={styles.pre}>{rawPrimary}</pre>
             </div>
           )}
 
