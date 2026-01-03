@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import Tabs from "@/components/Tabs";
 import MermaidRenderer from "@/components/MermaidRenderer";
 import CopyButton from "@/components/CopyButton";
 import styles from "./page.module.css";
+import toastStyles from "@/components/CopyButton.module.css";
 
 type Result = {
   mermaid: string;
@@ -51,12 +52,12 @@ function safeParseJsonLoose(raw: unknown): any | null {
   if (typeof raw !== "string") return null;
 
   const cleaned = raw
-    .replace(/^\uFEFF/, "") // BOM
+    .replace(/^\uFEFF/, "")
     .replace(/```json\s*/gi, "")
     .replace(/```\s*/g, "")
     .trim()
-    .replace(/\u00A0/g, " ") // NBSP
-    .replace(/,\s*([}\]])/g, "$1"); // 末尾カンマ除去
+    .replace(/\u00A0/g, " ")
+    .replace(/,\s*([}\]])/g, "$1");
 
   try {
     return JSON.parse(cleaned);
@@ -209,6 +210,22 @@ export default function ResultPage() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // ★右下トースト（SVG保存でも表示）
+  const [toast, setToast] = useState("");
+  const toastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  function showToast(message: string) {
+    setToast(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(""), 1600);
+  }
+
   const canShowDebug = useMemo(() => !!data?.debug, [data]);
 
   useEffect(() => {
@@ -273,6 +290,7 @@ export default function ResultPage() {
       const lastInput = sessionStorage.getItem("text2flow:lastInputText") || "";
       if (!lastInput.trim()) {
         setErr("元の入力が見つかりません。入力画面から再生成してください。");
+        showToast("元の入力が見つかりません");
         return;
       }
 
@@ -295,8 +313,10 @@ export default function ResultPage() {
 
       sessionStorage.setItem("text2flow:lastResult", JSON.stringify(next));
       setData(next);
+      showToast("再生成しました");
     } catch (e: any) {
       setErr(e?.message ?? "再生成に失敗しました");
+      showToast("再生成に失敗しました");
     } finally {
       setBusy(false);
     }
@@ -305,16 +325,27 @@ export default function ResultPage() {
   function downloadSvg() {
     const svgEl = document.querySelector("#resultSvgHost svg") as SVGElement | null;
     if (!svgEl) {
-      setErr("SVGが見つかりません（図の描画が完了しているか確認してください）");
+      const m = "SVGが見つかりません（図の描画が完了しているか確認してください）";
+      setErr(m);
+      showToast("SVGが見つかりません");
       return;
     }
-    const blob = new Blob([svgEl.outerHTML], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "text2flow.svg";
-    a.click();
-    URL.revokeObjectURL(url);
+
+    try {
+      const blob = new Blob([svgEl.outerHTML], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "text2flow.svg";
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // ★成功トースト
+      showToast("SVGを保存しました");
+    } catch {
+      setErr("SVGの保存に失敗しました。");
+      showToast("保存に失敗しました");
+    }
   }
 
   if (!data) {
@@ -370,7 +401,6 @@ export default function ResultPage() {
         <div className={styles.sectionHead}>
           <div className={styles.sectionTitle}>フロー図</div>
           <div className={styles.sectionActions}>
-            {/* ★ここで smallBtn を渡して、Download と色・サイズを統一 */}
             <CopyButton className={styles.smallBtn} label="Mermaidをコピー" value={mermaidCode} />
             <button className={styles.smallBtn} type="button" onClick={downloadSvg}>
               SVGを保存
@@ -473,6 +503,13 @@ export default function ResultPage() {
           )}
         </div>
       </section>
+
+      {/* ★右下トースト（CopyButtonと同じ見た目） */}
+      {toast ? (
+        <div className={toastStyles.toast} aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
     </AppShell>
   );
 }
