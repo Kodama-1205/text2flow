@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import styles from "./page.module.css";
 
 type Orientation = "TD" | "LR";
 type Detail = "simple" | "detailed";
+
+const STORAGE_INPUT = "text2flow:lastInputText";
+const STORAGE_CONFIG = "text2flow:lastConfig";
+const STORAGE_RESULT = "text2flow:lastResult";
 
 const samples = [
   {
@@ -31,6 +35,19 @@ const samples = [
   },
 ];
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function safeParseJson<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 export default function InputPage() {
   const [text, setText] = useState(samples[0].text);
   const [orientation, setOrientation] = useState<Orientation>("TD");
@@ -43,8 +60,38 @@ export default function InputPage() {
 
   const textCount = useMemo(() => text.trim().length, [text]);
 
+  // 初期復元（前回入力・前回設定）
+  useEffect(() => {
+    const lastText = sessionStorage.getItem(STORAGE_INPUT);
+    if (lastText && lastText.trim()) setText(lastText);
+
+    const cfg = safeParseJson<{
+      orientation?: Orientation;
+      detail?: Detail;
+      maxNodes?: number;
+      debug?: boolean;
+    }>(sessionStorage.getItem(STORAGE_CONFIG));
+
+    if (cfg) {
+      if (cfg.orientation === "TD" || cfg.orientation === "LR") setOrientation(cfg.orientation);
+      if (cfg.detail === "simple" || cfg.detail === "detailed") setDetail(cfg.detail);
+      if (typeof cfg.maxNodes === "number") setMaxNodes(clamp(cfg.maxNodes, 5, 40));
+      if (typeof cfg.debug === "boolean") setDebug(cfg.debug);
+    }
+  }, []);
+
+  // 設定は都度保存（/result → Edit で戻っても維持）
+  useEffect(() => {
+    sessionStorage.setItem(
+      STORAGE_CONFIG,
+      JSON.stringify({ orientation, detail, maxNodes: clamp(maxNodes, 5, 40), debug })
+    );
+  }, [orientation, detail, maxNodes, debug]);
+
   async function onGenerate() {
+    if (loading) return; // 二重送信防止
     setError("");
+
     const t = text.trim();
     if (!t) {
       setError("文章を入力してください。");
@@ -55,24 +102,31 @@ export default function InputPage() {
       return;
     }
 
+    const safeMaxNodes = clamp(Number.isFinite(maxNodes) ? maxNodes : 20, 5, 40);
+
     setLoading(true);
     try {
       const res = await fetch("/api/flow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: t, orientation, detail, maxNodes, debug }),
+        body: JSON.stringify({
+          text: t,
+          orientation,
+          detail,
+          maxNodes: safeMaxNodes,
+          debug,
+        }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? "生成に失敗しました");
 
       // 再生成に必要な入力も保存
-      sessionStorage.setItem("text2flow:lastInputText", t);
-
-      sessionStorage.setItem("text2flow:lastResult", JSON.stringify(data));
+      sessionStorage.setItem(STORAGE_INPUT, t);
+      sessionStorage.setItem(STORAGE_RESULT, JSON.stringify(data));
       sessionStorage.setItem(
-        "text2flow:lastConfig",
-        JSON.stringify({ orientation, detail, maxNodes, debug })
+        STORAGE_CONFIG,
+        JSON.stringify({ orientation, detail, maxNodes: safeMaxNodes, debug })
       );
 
       window.location.href = "/result";
@@ -85,7 +139,27 @@ export default function InputPage() {
 
   function onSample(name: string) {
     const s = samples.find((x) => x.name === name);
-    if (s) setText(s.text);
+    if (s) {
+      setText(s.text);
+      setError("");
+      sessionStorage.setItem(STORAGE_INPUT, s.text);
+    }
+  }
+
+  function onClear() {
+    if (loading) return;
+    setText("");
+    setError("");
+    sessionStorage.removeItem(STORAGE_INPUT);
+    sessionStorage.removeItem(STORAGE_RESULT);
+  }
+
+  function onTextareaKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Ctrl/Cmd + Enter で生成
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      onGenerate();
+    }
   }
 
   return (
@@ -97,6 +171,7 @@ export default function InputPage() {
               <div className={styles.h1}>文章を入力</div>
               <div className={styles.sub}>
                 箇条書き・番号付きOK。条件分岐（もし〜なら/場合/そうでなければ）も拾います。
+                <span style={{ opacity: 0.8, marginLeft: 8 }}>（Ctrl/Cmd + Enterで生成）</span>
               </div>
             </div>
             <div className={styles.counter}>{textCount} chars</div>
@@ -106,7 +181,9 @@ export default function InputPage() {
             className={styles.textarea}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={onTextareaKeyDown}
             placeholder="例）① 注文Excelを確認 ② 在庫と照合 ③ 不足分をSlack通知"
+            disabled={loading}
           />
 
           <div className={styles.row}>
@@ -117,6 +194,7 @@ export default function InputPage() {
                   className={styles.pill}
                   type="button"
                   onClick={() => onSample(s.name)}
+                  disabled={loading}
                 >
                   {s.name}
                 </button>
@@ -135,12 +213,7 @@ export default function InputPage() {
             >
               {loading ? "Generating..." : "Generate Flow"}
             </button>
-            <button
-              className={styles.secondary}
-              type="button"
-              onClick={() => setText("")}
-              disabled={loading}
-            >
+            <button className={styles.secondary} type="button" onClick={onClear} disabled={loading}>
               Clear
             </button>
           </div>
@@ -156,6 +229,7 @@ export default function InputPage() {
                 type="button"
                 className={`${styles.segBtn} ${orientation === "TD" ? styles.segOn : ""}`}
                 onClick={() => setOrientation("TD")}
+                disabled={loading}
               >
                 縦（Top-Down）
               </button>
@@ -163,6 +237,7 @@ export default function InputPage() {
                 type="button"
                 className={`${styles.segBtn} ${orientation === "LR" ? styles.segOn : ""}`}
                 onClick={() => setOrientation("LR")}
+                disabled={loading}
               >
                 横（Left-Right）
               </button>
@@ -176,6 +251,7 @@ export default function InputPage() {
                 type="button"
                 className={`${styles.segBtn} ${detail === "simple" ? styles.segOn : ""}`}
                 onClick={() => setDetail("simple")}
+                disabled={loading}
               >
                 ざっくり
               </button>
@@ -183,6 +259,7 @@ export default function InputPage() {
                 type="button"
                 className={`${styles.segBtn} ${detail === "detailed" ? styles.segOn : ""}`}
                 onClick={() => setDetail("detailed")}
+                disabled={loading}
               >
                 詳細
               </button>
@@ -200,7 +277,8 @@ export default function InputPage() {
               min={5}
               max={40}
               value={maxNodes}
-              onChange={(e) => setMaxNodes(Number(e.target.value))}
+              onChange={(e) => setMaxNodes(clamp(Number(e.target.value || 0), 5, 40))}
+              disabled={loading}
             />
             <div className={styles.help}>暴走防止（MVPでも安定運用しやすい）。</div>
           </div>
@@ -211,6 +289,7 @@ export default function InputPage() {
                 type="checkbox"
                 checked={debug}
                 onChange={(e) => setDebug(e.target.checked)}
+                disabled={loading}
               />
               <span>デバッグ情報を出力（開発用）</span>
             </label>

@@ -39,10 +39,82 @@ function mockResult(req: Required<Pick<Req, "text" | "orientation" | "detail" | 
     mermaid,
     steps,
     conditions,
-    dify_template: "",
+    dify_template: buildDifyTemplate(),
     explanation: "※現在はモック結果です。DIFY_API_KEY を設定すると Dify の結果で置き換わります。",
     ...(req.debug ? { debug: { mock: true, receivedTextPreview: req.text.slice(0, 140) } } : {}),
   };
+}
+
+/**
+ * Dify雛形（運用で迷わない最低限の手順テキスト）
+ * ※ Dify側が dify_template を返さない場合でも /result に表示される
+ */
+function buildDifyTemplate(): string {
+  // LLMプロンプト（あなたが確定させた安定版）
+  const prompt = `あなたは「文章→業務フローJSON」を返す関数です。
+入力文章から業務フローを抽出し、次のJSONスキーマに厳密に従って出力してください。
+
+【最重要】
+- 出力は JSON オブジェクト1つのみ（前置き/後書き/説明文/箇条書き/空行/コメント禁止）
+- \`\`\` や \`\`\`json などのコードフェンス禁止
+- 末尾カンマ禁止（配列・オブジェクトの最後に , を置かない）
+- ダブルクォートのみ使用
+- 最終文字は必ず } で終える（それ以外の文字を出さない）
+
+【制約】
+- nodes は1つ以上
+- id は "n0","n1","n2"... の連番（必ず文字列）
+- type は "start" | "end" | "task" | "decision"
+- start と end は必ず1つずつ含める
+- edges は from/to で接続する
+- decision ノードは condition を必ず入れる（短い日本語）
+- decision の分岐 edge.label は必ず "Yes" / "No"（それ以外禁止）
+- label は日本語OK（長い場合は短く）
+- nodes 数は max_nodes を超えない（超えそうなら重要な工程を優先して省略）
+
+【入力】
+text: {{text}}
+orientation: {{orientation}}
+detail: {{detail}}
+max_nodes: {{max_nodes}}
+
+【出力スキーマ】
+{
+  "title": "string",
+  "nodes": [
+    { "id": "n0", "label": "string", "type": "start" },
+    { "id": "n1", "label": "string", "type": "task" },
+    { "id": "n2", "label": "string", "type": "decision", "condition": "string" },
+    { "id": "n3", "label": "string", "type": "end" }
+  ],
+  "edges": [
+    { "from": "n0", "to": "n1" },
+    { "from": "n2", "to": "n3", "label": "Yes" },
+    { "from": "n2", "to": "n3", "label": "No" }
+  ]
+}`;
+
+  return [
+    "【Dify Workflow 雛形（最小構成）】",
+    "",
+    "1) ユーザー入力（Start / User Input）",
+    "   - text: Text",
+    "   - orientation: Text（TD/LR）",
+    "   - detail: Text（simple/detailed）",
+    "   - max_nodes: Text（例: 20）※ text-input型だと数値でも文字列で渡すのが安全",
+    "",
+    "2) LLM ノード",
+    "   - Model: 任意（例: gpt-4o-mini）",
+    "   - Prompt: 下記を貼り付け（変数は Dify の入力変数に合わせて参照）",
+    "",
+    "3) 出力（Output）",
+    "   - 変数名: flow_json_raw",
+    "   - 値: LLM の出力（テキスト）",
+    "",
+    "----------------------------------------",
+    "【LLM Prompt（貼り付け用）】",
+    prompt,
+  ].join("\n");
 }
 
 /**
@@ -257,8 +329,10 @@ export async function POST(request: Request) {
     const conditions =
       Array.isArray(outputs.conditions) ? outputs.conditions : deriveConditions(parsedFlow);
 
+    // ★ここを改善：Difyが返さなくても必ず雛形を返す
     const dify_template =
-      (typeof outputs.dify_template === "string" && outputs.dify_template.trim()) || "";
+      (typeof outputs.dify_template === "string" && outputs.dify_template.trim()) ||
+      buildDifyTemplate();
 
     const explanation =
       usedFallback
@@ -280,9 +354,9 @@ export async function POST(request: Request) {
               dify_status: dify?.data?.status ?? dify?.status ?? "",
               output_keys: Object.keys(outputs ?? {}),
               primary_key_used: "flow_json_raw" in (outputs ?? {}) ? "flow_json_raw" : "other",
-              // ★/result 側で再構築できるように“完全な生データ”も載せる（必要ならここを削ってもOK）
               flow_json_raw: rawPrimary,
-              raw_primary_preview: typeof rawPrimary === "string" ? rawPrimary.slice(0, 240) : rawPrimary,
+              raw_primary_preview:
+                typeof rawPrimary === "string" ? rawPrimary.slice(0, 240) : rawPrimary,
               inputs_sent: inputs,
             },
           }
