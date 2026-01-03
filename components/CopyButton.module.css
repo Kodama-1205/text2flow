@@ -1,12 +1,35 @@
-.btn{
-  cursor:pointer;
-  border-radius: 12px;
-  border: 1px solid rgba(167,139,250,.35);
-  background: rgba(124,58,237,.16);
-  padding: 10px 12px;
-  color: rgba(255,255,255,.9);
-  transition: .15s ease;
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: max-content;
 }
-.btn:hover{
-  background: rgba(124,58,237,.22);
+
+.btn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.06s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.msg {
+  font-size: 12px;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.72);
+  min-height: 14px; /* メッセージが消えてもガタつかない */
+  user-select: none;
 }
