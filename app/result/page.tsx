@@ -57,8 +57,7 @@ function safeParseJsonLoose(raw: unknown): any | null {
     .replace(/```json\s*/gi, "")
     .replace(/```\s*/g, "")
     .trim()
-    // 末尾カンマ除去（配列/オブジェクト）
-    .replace(/,\s*([}\]])/g, "$1");
+    .replace(/,\s*([}\]])/g, "$1"); // trailing commas
 
   try {
     return JSON.parse(cleaned);
@@ -114,16 +113,13 @@ function edgeLabelNormalize(l?: string) {
 
 function buildMermaidFromFlow(flow: FlowJson, orientation: string) {
   const dir = orientation === "LR" ? "LR" : "TD";
-
   const nodes = flow.nodes ?? [];
   const edges = flow.edges ?? [];
 
   const lines: string[] = [];
   lines.push(`flowchart ${dir}`);
 
-  for (const n of nodes) {
-    lines.push(`  ${nodeToMermaid(n)}`);
-  }
+  for (const n of nodes) lines.push(`  ${nodeToMermaid(n)}`);
 
   for (const e of edges) {
     const lbl = edgeLabelNormalize(e.label);
@@ -151,6 +147,7 @@ function computeSteps(flow: FlowJson): string[] {
   const order: string[] = [];
 
   function sortOutgoing(list: FlowEdge[]) {
+    // decisionは Yes→No を優先
     return [...list].sort((a, b) => {
       const al = edgeLabelNormalize(a.label);
       const bl = edgeLabelNormalize(b.label);
@@ -169,14 +166,11 @@ function computeSteps(flow: FlowJson): string[] {
     if (n) order.push(n.label);
 
     const outs = outMap.get(id) ?? [];
-    for (const e of sortOutgoing(outs)) {
-      if (!visited.has(e.to)) q.push(e.to);
-    }
+    for (const e of sortOutgoing(outs)) if (!visited.has(e.to)) q.push(e.to);
   }
 
-  for (const n of nodes) {
-    if (!visited.has(n.id)) order.push(n.label);
-  }
+  // 未到達ノードも最後に追加（孤立対策）
+  for (const n of nodes) if (!visited.has(n.id)) order.push(n.label);
 
   return order;
 }
@@ -226,7 +220,7 @@ export default function ResultPage() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // --- Toast（成功メッセージ） ---
+  // --- Toast ---
   const [toast, setToast] = useState<ToastState>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -243,6 +237,7 @@ export default function ResultPage() {
   }, []);
 
   const canShowDebug = useMemo(() => !!data?.debug, [data]);
+
   const rawPrimary = useMemo(() => {
     const v = (data as any)?.debug?.flow_json_raw ?? (data as any)?.flow_json_raw ?? null;
     if (v == null) return "";
@@ -267,6 +262,7 @@ export default function ResultPage() {
     return TAB_ITEMS;
   }, [canShowDebug, rawPrimary]);
 
+  // flow_json をクライアント側で修復して、表示を上書きできるようにする
   const repaired = useMemo(() => {
     if (!data) return { flow: null as FlowJson | null, usedRepair: false };
 
@@ -301,8 +297,10 @@ export default function ResultPage() {
   }, [repaired.flow]);
 
   async function onRegenerate() {
+    if (busy) return;
     setErr("");
     setBusy(true);
+
     try {
       const configRaw = sessionStorage.getItem("text2flow:lastConfig");
       const config = configRaw
@@ -329,8 +327,11 @@ export default function ResultPage() {
         body: JSON.stringify(payload),
       });
 
-      const next = await res.json();
-      if (!res.ok) throw new Error(next?.error ?? "再生成に失敗しました");
+      const next = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint = next?.hint ? `\n\nヒント: ${next.hint}` : "";
+        throw new Error((next?.error ?? "再生成に失敗しました") + hint);
+      }
 
       sessionStorage.setItem("text2flow:lastResult", JSON.stringify(next));
       setData(next);
@@ -359,7 +360,7 @@ export default function ResultPage() {
     showToast("SVGをダウンロードしました");
   }
 
-  // CopyButtonはそのまま使い、親の capture で「コピー系クリック」を検知してトーストを出す
+  // CopyButtonは触らず、親の capture で「コピークリック」を検知してトーストを出す
   function onCopyActionCapture(e: React.SyntheticEvent) {
     const target = e.target as HTMLElement | null;
     if (!target) return;
@@ -394,7 +395,7 @@ export default function ResultPage() {
 
   return (
     <AppShell>
-      {/* Toast（UIはCSS触らず、inlineで最小実装） */}
+      {/* Toast（CSSは触らず inline の最小実装） */}
       {toast ? (
         <div
           aria-live="polite"
@@ -419,10 +420,17 @@ export default function ResultPage() {
         </div>
       ) : null}
 
-      <div className={styles.topbar}>
+      <div className={styles.topbar} aria-busy={busy}>
         <div>
           <div className={styles.title}>Generated Flow</div>
           <div className={styles.sub}>{data.explanation}</div>
+
+          {busy ? (
+            <div className={styles.sub} style={{ opacity: 0.85, marginTop: 6 }}>
+              再生成中です…（結果が更新されるまでこの画面のままお待ちください）
+            </div>
+          ) : null}
+
           {repaired.flow && repaired.usedRepair ? (
             <div className={styles.sub} style={{ opacity: 0.8, marginTop: 6 }}>
               ※ flow_json_raw を自動補正して表示しています（末尾カンマ/```json など）
@@ -435,6 +443,7 @@ export default function ResultPage() {
             className={styles.secondary}
             type="button"
             onClick={() => (window.location.href = "/input")}
+            disabled={busy}
           >
             ← Edit
           </button>
@@ -444,7 +453,11 @@ export default function ResultPage() {
         </div>
       </div>
 
-      {err ? <div className={styles.error}>{err}</div> : null}
+      {err ? (
+        <div className={styles.error} style={{ whiteSpace: "pre-wrap" }}>
+          {err}
+        </div>
+      ) : null}
 
       {/* Flow Diagram */}
       <section className={styles.section}>
@@ -453,14 +466,45 @@ export default function ResultPage() {
 
           <div className={styles.sectionActions} onClickCapture={onCopyActionCapture}>
             <CopyButton label="Copy Mermaid" value={mermaidCode} />
-            <button className={styles.smallBtn} type="button" onClick={downloadSvg}>
+            <button className={styles.smallBtn} type="button" onClick={downloadSvg} disabled={busy}>
               Download SVG
             </button>
           </div>
         </div>
 
-        <div id="resultSvgHost" className={styles.diagram}>
-          <MermaidRenderer mermaid={mermaidCode} />
+        <div style={{ position: "relative" }}>
+          {/* 再生成中は薄いオーバーレイだけ出して、既存の図は保持（チラつき防止） */}
+          {busy ? (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 2,
+                borderRadius: 16,
+                background: "rgba(0,0,0,0.18)",
+                border: "1px solid rgba(168, 85, 247, 0.18)",
+                backdropFilter: "blur(2px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                pointerEvents: "none",
+                color: "rgba(255,255,255,0.86)",
+                fontSize: 13,
+              }}
+            >
+              再生成中…
+            </div>
+          ) : null}
+
+          <div id="resultSvgHost" className={styles.diagram}>
+            {mermaidCode ? (
+              <MermaidRenderer mermaid={mermaidCode} />
+            ) : (
+              <div style={{ padding: 16, opacity: 0.85 }}>
+                Mermaidコードが空のため、図を表示できませんでした。
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
