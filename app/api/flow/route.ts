@@ -1,4 +1,3 @@
-// /web/app/api/flow/route.ts
 import { NextResponse } from "next/server";
 import { FlowSchema, type Text2FlowResult } from "@/lib/flow-schema";
 import { flowToMermaid, deriveSteps, deriveConditions } from "@/lib/flow-to-mermaid";
@@ -42,36 +41,50 @@ function mockResult(
     mermaid,
     steps,
     conditions,
-    dify_template: "",
+    dify_template: buildDifyTemplateFallback({
+      orientation: req.orientation,
+      detail: req.detail,
+      maxNodes: req.maxNodes,
+    }),
     explanation: "※現在はモック結果です。DIFY_API_KEY を設定すると Dify の結果で置き換わります。",
     ...(req.debug ? { debug: { mock: true, receivedTextPreview: req.text.slice(0, 140) } } : {}),
   };
 }
 
 /**
- * Dify返却文字列の“汚れ”を徹底的に除去してJSONとして読める形にする
- * - BOM
- * - ```json ... ``` フェンス
- * - NBSP(0xA0) や特殊空白
- * - 末尾カンマ
- * - 前後のゴミ
+ * Dify雛形（常に返す）: Dify側が flow_json_raw しか返さなくてもOKにする
  */
-function normalizeJsonText(s: string): string {
-  return (
-    s
-      // BOM
-      .replace(/^\uFEFF/, "")
-      // NBSP & いわゆる“変な空白”を通常スペースへ
-      .replace(/\u00A0/g, " ")
-      .replace(/\u2007/g, " ")
-      .replace(/\u202F/g, " ")
-      // code fence 除去
-      .replace(/```json\s*/gi, "")
-      .replace(/```\s*/g, "")
-      .trim()
-      // 末尾カンマ除去（配列/オブジェクト）
-      .replace(/,\s*([}\]])/g, "$1")
-  );
+function buildDifyTemplateFallback(opts: {
+  orientation: "TD" | "LR";
+  detail: "simple" | "detailed";
+  maxNodes: number;
+}) {
+  // DifyのUIに貼りやすい“手順テキスト”形式にする（JSON/YAMLに固定しない）
+  return [
+    "Dify Workflow 雛形（最小構成）",
+    "",
+    "1) ユーザー入力（Start）",
+    '   - text: text-input (String)',
+    '   - orientation: text-input (String) 例: "TD" / "LR"',
+    '   - detail: text-input (String) 例: "simple" / "detailed"',
+    '   - max_nodes: text-input (String) 例: "20"',
+    "",
+    "2) LLM ノード（gpt-4o-mini 等）",
+    "   - 指示: 入力文章から業務フローを抽出し、JSONのみで返す",
+    '   - 最重要: コードフェンス禁止 / 末尾カンマ禁止 / Yes/No分岐 / idはn0..連番',
+    "   - 出力変数名: flow_json_raw（String）←これが最重要",
+    "",
+    "3) 出力（End）",
+    "   - flow_json_raw を最終出力に設定",
+    "",
+    "推奨（あなたの現状と一致）",
+    `- orientation: ${opts.orientation}`,
+    `- detail: ${opts.detail}`,
+    `- max_nodes: ${String(opts.maxNodes)}`,
+    "",
+    "メモ",
+    "- 本Webアプリは flow_json_raw を受け取り、サーバ側で厳密パース→Mermaid化します。",
+  ].join("\n");
 }
 
 /**
@@ -80,19 +93,29 @@ function normalizeJsonText(s: string): string {
 function parseLooseJson(raw: unknown): any | null {
   if (!raw) return null;
   if (typeof raw === "object") return raw;
+
   if (typeof raw !== "string") return null;
 
-  let s = normalizeJsonText(raw);
+  let s = raw.trim();
   if (!s) return null;
+
+  // BOM/コードフェンス除去 + 末尾カンマ除去（NBSPなどの混入にも強くする）
+  s = s
+    .replace(/^\uFEFF/, "")
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    // NBSP(0xA0) 等の不可視空白を通常スペースに寄せる
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .replace(/,\s*([}\]])/g, "$1");
 
   // 1) 素直にJSON.parse
   try {
     const a = JSON.parse(s);
     // 二重エンコード対策: もう一回
     if (typeof a === "string") {
-      const s2 = normalizeJsonText(a);
       try {
-        return JSON.parse(s2);
+        return JSON.parse(a.trim());
       } catch {
         return a;
       }
@@ -103,13 +126,12 @@ function parseLooseJson(raw: unknown): any | null {
     const i = s.indexOf("{");
     const j = s.lastIndexOf("}");
     if (i >= 0 && j > i) {
-      const sub = normalizeJsonText(s.slice(i, j + 1));
+      const sub = s.slice(i, j + 1);
       try {
         const b = JSON.parse(sub);
         if (typeof b === "string") {
-          const s2 = normalizeJsonText(b);
           try {
-            return JSON.parse(s2);
+            return JSON.parse(b.trim());
           } catch {
             return b;
           }
@@ -181,7 +203,7 @@ export async function POST(request: Request) {
       dify?.output ??
       {};
 
-    // Difyの最終Outputを flow_json_raw にしている前提で確実に拾う
+    // ★Difyの最終Outputを flow_json_raw にしている前提で確実に拾う
     const rawPrimary =
       outputs.flow_json_raw ??
       outputs.flow_json ??
@@ -192,56 +214,46 @@ export async function POST(request: Request) {
       null;
 
     const parsedAny = parseLooseJson(rawPrimary);
-    let flowCandidate = toFlowCandidate(parsedAny);
+    const flowCandidate = toFlowCandidate(parsedAny);
 
-    // それでもダメなら、outputsの別キーも総当たりで救済（保険）
-    if (!flowCandidate) {
+    // flow_json（object or string）を確実にFlow化
+    let flow_json: any = flowCandidate;
+
+    // それでもダメなら、outputsの別キーも総当たりで救済
+    if (!flow_json) {
       const keys = Object.keys(outputs ?? {});
       for (const k of keys) {
         const v = (outputs as any)[k];
         const p = parseLooseJson(v);
         const fc = toFlowCandidate(p);
         if (fc) {
-          flowCandidate = fc;
+          flow_json = fc;
           break;
         }
       }
     }
 
-    // ★ここで取得できないなら「ダミー表示」はやめる（＝エラーとして返す）
-    if (!flowCandidate) {
+    // ここでは “最低限フローで誤魔化す” より、解析できたら返す（失敗は500に倒す）
+    if (!flow_json) {
       return NextResponse.json(
         {
-          error:
-            "Difyの出力(flow_json_raw)を取得/解析できませんでした（ダミー表示は行いません）。",
-          hint:
-            "Dify側の最終出力変数名が flow_json_raw であること、JSONにNBSP/コードフェンス/末尾カンマ等が混入していないことを確認してください。",
-          ...(debug
-            ? {
-                debug: {
-                  dify_status: dify?.data?.status ?? dify?.status ?? "",
-                  output_keys: Object.keys(outputs ?? {}),
-                  raw_primary_preview:
-                    typeof rawPrimary === "string" ? rawPrimary.slice(0, 500) : rawPrimary,
-                  inputs_sent: inputs,
-                },
-              }
-            : {}),
+          error: "Difyの出力(flow_json_raw)を取得/解析できませんでした。",
+          hint: "Difyの最終出力変数名が flow_json_raw で、JSONのみ（コードフェンス/末尾カンマなし）を返しているか確認してください。",
         },
-        { status: 502 }
+        { status: 500 }
       );
     }
 
     // ノード数制限（暴走対策）
-    if (Array.isArray(flowCandidate.nodes) && flowCandidate.nodes.length > maxNodes) {
-      flowCandidate.nodes = flowCandidate.nodes.slice(0, maxNodes);
-      if (Array.isArray(flowCandidate.edges)) {
-        const allow = new Set(flowCandidate.nodes.map((n: any) => n.id));
-        flowCandidate.edges = flowCandidate.edges.filter((e: any) => allow.has(e.from) && allow.has(e.to));
+    if (Array.isArray(flow_json.nodes) && flow_json.nodes.length > maxNodes) {
+      flow_json.nodes = flow_json.nodes.slice(0, maxNodes);
+      if (Array.isArray(flow_json.edges)) {
+        const allow = new Set(flow_json.nodes.map((n: any) => n.id));
+        flow_json.edges = flow_json.edges.filter((e: any) => allow.has(e.from) && allow.has(e.to));
       }
     }
 
-    const parsedFlow = FlowSchema.parse(flowCandidate);
+    const parsedFlow = FlowSchema.parse(flow_json);
 
     const mermaid =
       (typeof outputs.mermaid === "string" && outputs.mermaid.trim()) ||
@@ -257,8 +269,15 @@ export async function POST(request: Request) {
     const conditions =
       Array.isArray(outputs.conditions) ? outputs.conditions : deriveConditions(parsedFlow);
 
+    // ★ここが今回：Difyが返さなくても、必ず雛形を返す
+    const difyTemplateFromDify =
+      typeof outputs.dify_template === "string" && outputs.dify_template.trim()
+        ? outputs.dify_template.trim()
+        : "";
+
     const dify_template =
-      (typeof outputs.dify_template === "string" && outputs.dify_template.trim()) || "";
+      difyTemplateFromDify ||
+      buildDifyTemplateFallback({ orientation, detail, maxNodes });
 
     const explanation =
       (typeof outputs.explanation === "string" && outputs.explanation.trim()) ||
@@ -278,8 +297,9 @@ export async function POST(request: Request) {
               output_keys: Object.keys(outputs ?? {}),
               primary_key_used: "flow_json_raw" in (outputs ?? {}) ? "flow_json_raw" : "other",
               raw_primary_preview:
-                typeof rawPrimary === "string" ? rawPrimary.slice(0, 500) : rawPrimary,
+                typeof rawPrimary === "string" ? rawPrimary.slice(0, 240) : rawPrimary,
               inputs_sent: inputs,
+              dify_template_source: difyTemplateFromDify ? "dify" : "fallback",
             },
           }
         : {}),
