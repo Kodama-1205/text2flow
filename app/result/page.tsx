@@ -1,7 +1,7 @@
 // /web/app/result/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import Tabs from "@/components/Tabs";
 import MermaidRenderer from "@/components/MermaidRenderer";
@@ -43,7 +43,6 @@ const TAB_ITEMS = [
   { key: "dify", label: "Dify雛形" },
   { key: "code", label: "Mermaidコード" },
   { key: "json", label: "JSON" },
-  { key: "raw", label: "Raw" },
   { key: "debug", label: "Debug" },
 ];
 
@@ -54,10 +53,12 @@ function safeParseJsonLoose(raw: unknown): any | null {
 
   const cleaned = raw
     .replace(/^\uFEFF/, "") // BOM
+    .replace(/\u00A0/g, " ") // ★ NBSP
     .replace(/```json\s*/gi, "")
     .replace(/```\s*/g, "")
     .trim()
-    .replace(/,\s*([}\]])/g, "$1"); // trailing commas
+    // 末尾カンマ除去（配列/オブジェクト）
+    .replace(/,\s*([}\]])/g, "$1");
 
   try {
     return JSON.parse(cleaned);
@@ -113,13 +114,16 @@ function edgeLabelNormalize(l?: string) {
 
 function buildMermaidFromFlow(flow: FlowJson, orientation: string) {
   const dir = orientation === "LR" ? "LR" : "TD";
+
   const nodes = flow.nodes ?? [];
   const edges = flow.edges ?? [];
 
   const lines: string[] = [];
   lines.push(`flowchart ${dir}`);
 
-  for (const n of nodes) lines.push(`  ${nodeToMermaid(n)}`);
+  for (const n of nodes) {
+    lines.push(`  ${nodeToMermaid(n)}`);
+  }
 
   for (const e of edges) {
     const lbl = edgeLabelNormalize(e.label);
@@ -147,7 +151,6 @@ function computeSteps(flow: FlowJson): string[] {
   const order: string[] = [];
 
   function sortOutgoing(list: FlowEdge[]) {
-    // decisionは Yes→No を優先
     return [...list].sort((a, b) => {
       const al = edgeLabelNormalize(a.label);
       const bl = edgeLabelNormalize(b.label);
@@ -166,11 +169,14 @@ function computeSteps(flow: FlowJson): string[] {
     if (n) order.push(n.label);
 
     const outs = outMap.get(id) ?? [];
-    for (const e of sortOutgoing(outs)) if (!visited.has(e.to)) q.push(e.to);
+    for (const e of sortOutgoing(outs)) {
+      if (!visited.has(e.to)) q.push(e.to);
+    }
   }
 
-  // 未到達ノードも最後に追加（孤立対策）
-  for (const n of nodes) if (!visited.has(n.id)) order.push(n.label);
+  for (const n of nodes) {
+    if (!visited.has(n.id)) order.push(n.label);
+  }
 
   return order;
 }
@@ -212,37 +218,13 @@ function readLastOrientation(): string {
   }
 }
 
-type ToastState = { msg: string } | null;
-
 export default function ResultPage() {
   const [data, setData] = useState<Result | null>(null);
   const [tab, setTab] = useState("steps");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // --- Toast ---
-  const [toast, setToast] = useState<ToastState>(null);
-  const toastTimerRef = useRef<number | null>(null);
-
-  function showToast(msg: string) {
-    setToast({ msg });
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(null), 1800);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    };
-  }, []);
-
   const canShowDebug = useMemo(() => !!data?.debug, [data]);
-
-  const rawPrimary = useMemo(() => {
-    const v = (data as any)?.debug?.flow_json_raw ?? (data as any)?.flow_json_raw ?? null;
-    if (v == null) return "";
-    return typeof v === "string" ? v : JSON.stringify(v, null, 2);
-  }, [data]);
 
   useEffect(() => {
     try {
@@ -257,12 +239,10 @@ export default function ResultPage() {
   }, []);
 
   const tabs = useMemo(() => {
-    if (!canShowDebug) return TAB_ITEMS.filter((t) => t.key !== "debug" && t.key !== "raw");
-    if (canShowDebug && !rawPrimary) return TAB_ITEMS.filter((t) => t.key !== "raw");
+    if (!canShowDebug) return TAB_ITEMS.filter((t) => t.key !== "debug");
     return TAB_ITEMS;
-  }, [canShowDebug, rawPrimary]);
+  }, [canShowDebug]);
 
-  // flow_json をクライアント側で修復して、表示を上書きできるようにする
   const repaired = useMemo(() => {
     if (!data) return { flow: null as FlowJson | null, usedRepair: false };
 
@@ -297,10 +277,8 @@ export default function ResultPage() {
   }, [repaired.flow]);
 
   async function onRegenerate() {
-    if (busy) return;
     setErr("");
     setBusy(true);
-
     try {
       const configRaw = sessionStorage.getItem("text2flow:lastConfig");
       const config = configRaw
@@ -327,15 +305,11 @@ export default function ResultPage() {
         body: JSON.stringify(payload),
       });
 
-      const next = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const hint = next?.hint ? `\n\nヒント: ${next.hint}` : "";
-        throw new Error((next?.error ?? "再生成に失敗しました") + hint);
-      }
+      const next = await res.json();
+      if (!res.ok) throw new Error(next?.error ?? "再生成に失敗しました");
 
       sessionStorage.setItem("text2flow:lastResult", JSON.stringify(next));
       setData(next);
-      showToast("再生成しました");
     } catch (e: any) {
       setErr(e?.message ?? "再生成に失敗しました");
     } finally {
@@ -356,21 +330,6 @@ export default function ResultPage() {
     a.download = "text2flow.svg";
     a.click();
     URL.revokeObjectURL(url);
-
-    showToast("SVGをダウンロードしました");
-  }
-
-  // CopyButtonは触らず、親の capture で「コピークリック」を検知してトーストを出す
-  function onCopyActionCapture(e: React.SyntheticEvent) {
-    const target = e.target as HTMLElement | null;
-    if (!target) return;
-
-    const btn = target.closest("button");
-    if (!btn) return;
-
-    const label = (btn.textContent ?? "").trim();
-    if (label === "Copy Mermaid") showToast("Mermaidをコピーしました");
-    else if (label === "Copy") showToast("コピーしました");
   }
 
   if (!data) {
@@ -395,47 +354,10 @@ export default function ResultPage() {
 
   return (
     <AppShell>
-      {/* Toast（CSSは触らず inline の最小実装） */}
-      {toast ? (
-        <div
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            right: 18,
-            bottom: 18,
-            zIndex: 50,
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(168, 85, 247, 0.35)",
-            background: "rgba(10, 8, 20, 0.82)",
-            color: "rgba(255,255,255,0.92)",
-            backdropFilter: "blur(10px)",
-            boxShadow: "0 12px 30px rgba(0,0,0,0.35)",
-            fontSize: 13,
-            lineHeight: 1.2,
-            maxWidth: 320,
-          }}
-        >
-          {toast.msg}
-        </div>
-      ) : null}
-
-      <div className={styles.topbar} aria-busy={busy}>
+      <div className={styles.topbar}>
         <div>
           <div className={styles.title}>Generated Flow</div>
           <div className={styles.sub}>{data.explanation}</div>
-
-          {busy ? (
-            <div className={styles.sub} style={{ opacity: 0.85, marginTop: 6 }}>
-              再生成中です…（結果が更新されるまでこの画面のままお待ちください）
-            </div>
-          ) : null}
-
-          {repaired.flow && repaired.usedRepair ? (
-            <div className={styles.sub} style={{ opacity: 0.8, marginTop: 6 }}>
-              ※ flow_json_raw を自動補正して表示しています（末尾カンマ/```json など）
-            </div>
-          ) : null}
         </div>
 
         <div className={styles.topActions}>
@@ -443,7 +365,6 @@ export default function ResultPage() {
             className={styles.secondary}
             type="button"
             onClick={() => (window.location.href = "/input")}
-            disabled={busy}
           >
             ← Edit
           </button>
@@ -453,62 +374,24 @@ export default function ResultPage() {
         </div>
       </div>
 
-      {err ? (
-        <div className={styles.error} style={{ whiteSpace: "pre-wrap" }}>
-          {err}
-        </div>
-      ) : null}
+      {err ? <div className={styles.error}>{err}</div> : null}
 
-      {/* Flow Diagram */}
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <div className={styles.sectionTitle}>Flow Diagram</div>
-
-          <div className={styles.sectionActions} onClickCapture={onCopyActionCapture}>
+          <div className={styles.sectionActions}>
             <CopyButton label="Copy Mermaid" value={mermaidCode} />
-            <button className={styles.smallBtn} type="button" onClick={downloadSvg} disabled={busy}>
+            <button className={styles.smallBtn} type="button" onClick={downloadSvg}>
               Download SVG
             </button>
           </div>
         </div>
 
-        <div style={{ position: "relative" }}>
-          {/* 再生成中は薄いオーバーレイだけ出して、既存の図は保持（チラつき防止） */}
-          {busy ? (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 2,
-                borderRadius: 16,
-                background: "rgba(0,0,0,0.18)",
-                border: "1px solid rgba(168, 85, 247, 0.18)",
-                backdropFilter: "blur(2px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                pointerEvents: "none",
-                color: "rgba(255,255,255,0.86)",
-                fontSize: 13,
-              }}
-            >
-              再生成中…
-            </div>
-          ) : null}
-
-          <div id="resultSvgHost" className={styles.diagram}>
-            {mermaidCode ? (
-              <MermaidRenderer mermaid={mermaidCode} />
-            ) : (
-              <div style={{ padding: 16, opacity: 0.85 }}>
-                Mermaidコードが空のため、図を表示できませんでした。
-              </div>
-            )}
-          </div>
+        <div id="resultSvgHost" className={styles.diagram}>
+          <MermaidRenderer mermaid={mermaidCode} />
         </div>
       </section>
 
-      {/* Details */}
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <div className={styles.sectionTitle}>Details</div>
@@ -517,7 +400,7 @@ export default function ResultPage() {
           </div>
         </div>
 
-        <div className={styles.panel} onClickCapture={onCopyActionCapture}>
+        <div className={styles.panel}>
           {tab === "steps" && (
             <div>
               <div className={styles.panelTitle}>処理順</div>
@@ -581,16 +464,6 @@ export default function ResultPage() {
                 <CopyButton label="Copy" value={jsonText} />
               </div>
               <pre className={styles.pre}>{jsonText}</pre>
-            </div>
-          )}
-
-          {tab === "raw" && (
-            <div>
-              <div className={styles.panelHead2}>
-                <div className={styles.panelTitle}>flow_json_raw（生）</div>
-                <CopyButton label="Copy" value={rawPrimary} />
-              </div>
-              <pre className={styles.pre}>{rawPrimary}</pre>
             </div>
           )}
 
