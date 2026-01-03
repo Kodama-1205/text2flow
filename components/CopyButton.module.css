@@ -1,0 +1,12 @@
+.btn{
+  cursor:pointer;
+  border-radius: 12px;
+  border: 1px solid rgba(167,139,250,.35);
+  background: rgba(124,58,237,.16);
+  padding: 10px 12px;
+  color: rgba(255,255,255,.9);
+  transition: .15s ease;
+}
+.btn:hover{
+  background: rgba(124,58,237,.22);
+}

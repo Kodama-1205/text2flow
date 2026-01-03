@@ -1,0 +1,228 @@
+/* /web/app/result/page.module.css */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.sub {
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.topActions {
+  display: flex;
+  gap: 10px;
+}
+
+.primary,
+.secondary,
+.smallBtn {
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  background: rgba(167, 139, 250, 0.14);
+  color: #fff;
+  border-radius: 14px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.primary {
+  background: rgba(167, 139, 250, 0.28);
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.primary:hover:not(:disabled),
+.secondary:hover,
+.smallBtn:hover {
+  background: rgba(167, 139, 250, 0.22);
+  transform: translateY(-1px);
+}
+
+.smallBtn {
+  padding: 9px 12px;
+  border-radius: 12px;
+}
+
+.error {
+  margin: 10px 0 14px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* 共通セクション（Flow Diagram / Details の枠を揃える） */
+.section {
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  border-radius: 18px;
+  background: rgba(13, 10, 26, 0.55);
+  box-shadow: 0 14px 48px rgba(0, 0, 0, 0.38);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px;
+  border-bottom: 1px solid rgba(167, 139, 250, 0.18);
+  background: linear-gradient(180deg, rgba(26, 19, 48, 0.7), rgba(15, 11, 31, 0.35));
+}
+
+.sectionTitle {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.sectionActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tabsWrap {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 240px;
+}
+
+/* Mermaid 描画領域 */
+.diagram {
+  padding: 16px;
+  min-height: 360px;
+}
+
+/* Details panel */
+.panel {
+  padding: 14px;
+}
+
+.panelHead2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.panelTitle {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.pre {
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  background: rgba(10, 8, 20, 0.55);
+  border-radius: 14px;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.list {
+  padding-left: 18px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.muted {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.conditions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 860px) {
+  .conditions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.condCard {
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  background: rgba(10, 8, 20, 0.55);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.condTitle {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.condRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(167, 139, 250, 0.12);
+}
+
+.condRow:first-of-type {
+  border-top: none;
+}
+
+.yn {
+  width: 44px;
+  opacity: 0.9;
+}
+
+.condTo {
+  flex: 1;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* empty state */
+.empty {
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  background: rgba(13, 10, 26, 0.55);
+  border-radius: 18px;
+  padding: 20px;
+}
+
+.emptyTitle {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.emptyText {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.link {
+  display: inline-block;
+  margin-top: 12px;
+  color: rgba(167, 139, 250, 0.95);
+  text-decoration: none;
+}

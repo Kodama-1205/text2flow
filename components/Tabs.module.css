@@ -1,0 +1,52 @@
+/* Flow Diagram のヘッダー枠に寄せる：
+   - 丸すぎない角丸
+   - 薄い紫の枠線
+   - うっすら暗い背景 + ぼかし
+   - 折り返しOK
+*/
+.wrap {
+  display: flex;
+  flex-wrap: wrap;          /* ← 折り返しOK（ユーザー要望） */
+  gap: 10px;
+  align-items: center;
+
+  padding: 12px 12px;
+  border-radius: 18px;      /* ← 9999pxの“カプセル”をやめる */
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  backdrop-filter: blur(10px);
+
+  /* 長いラベルで横に押し広げない */
+  min-width: 0;
+}
+
+/* タブ自体は Copy/Download ボタンの“角丸ボタン”に寄せる */
+.tab {
+  flex: 0 0 auto;
+  border-radius: 14px; /* ← タブも丸すぎない */
+  padding: 10px 14px;
+
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.06s ease;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+.tab:active {
+  transform: translateY(1px);
+}
+
+.active {
+  background: rgba(167, 139, 250, 0.18);
+  border-color: rgba(167, 139, 250, 0.75);
+  color: #fff;
+}
