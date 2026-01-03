@@ -32,7 +32,8 @@ const samples = [
 ];
 
 export default function InputPage() {
-  const [text, setText] = useState(samples[0].text);
+  // ★初期値は空（サンプルは“例”としてボタンで挿入）
+  const [text, setText] = useState("");
   const [orientation, setOrientation] = useState<Orientation>("TD");
   const [detail, setDetail] = useState<Detail>("simple");
   const [maxNodes, setMaxNodes] = useState(20);
@@ -97,14 +98,19 @@ export default function InputPage() {
                 箇条書き・番号付きOK。条件分岐（もし〜なら/場合/そうでなければ）も拾います。
               </div>
             </div>
-            <div className={styles.counter}>{textCount} chars</div>
+            <div className={styles.counter}>{textCount} 文字</div>
           </div>
 
           <textarea
             className={styles.textarea}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="例）① 注文Excelを確認 ② 在庫と照合 ③ 不足分をSlack通知"
+            placeholder={`例）
+① 注文Excelを確認
+② 在庫と照合
+③ もし在庫が足りないなら：発注してSlack通知
+④ そうでなければ：出荷準備へ進む
+⑤ 終了`}
           />
 
           <div className={styles.row}>
