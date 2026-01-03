@@ -1,241 +1,156 @@
-import type { Flow } from "./flow-schema";
+// /web/lib/flow-to-mermaid.ts
 
-/**
- * Mermaidのラベルで壊れやすい記号を除去/置換
- * - []{}()| は構文に使われるので避ける
- * - 改行はスペースに
- */
-function sanitizeLabel(s: string) {
-  return (s ?? "")
-    .replaceAll("\r\n", "\n")
-    .replaceAll("\n", " ")
-    .replaceAll("[", "［")
-    .replaceAll("]", "］")
-    .replaceAll("{", "｛")
-    .replaceAll("}", "｝")
-    .replaceAll("(", "（")
-    .replaceAll(")", "）")
-    .replaceAll("|", "｜")
-    .trim();
+export type FlowNodeType = "start" | "end" | "task" | "decision";
+
+export type FlowNode = {
+  id: string;
+  label: string;
+  type: FlowNodeType;
+  condition?: string;
+};
+
+export type FlowEdge = {
+  from: string;
+  to: string;
+  label?: string;
+};
+
+export type FlowJson = {
+  title?: string;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+};
+
+export type DerivedCondition = { condition: string; yes?: string; no?: string };
+
+function escLabel(s: string) {
+  // Mermaidで崩れやすいものだけ最低限エスケープ
+  return String(s).replace(/\r?\n/g, " ").replace(/"/g, '\\"');
+}
+
+function normalizeEdgeLabel(l?: string) {
+  if (!l) return "";
+  const t = l.trim().toLowerCase();
+  if (t === "yes" || t === "y" || t === "true") return "Yes";
+  if (t === "no" || t === "n" || t === "false") return "No";
+  return l.trim();
+}
+
+function nodeToMermaid(n: FlowNode) {
+  const label = escLabel(n.label);
+  if (n.type === "start") return `${n.id}([${label}])`;
+  if (n.type === "end") return `${n.id}([${label}])`;
+  if (n.type === "decision") return `${n.id}{${label}}`;
+  return `${n.id}[${label}]`;
 }
 
 /**
- * MermaidのIDは英数字/アンダースコアが安全。
- * Dify等から日本語IDが来ても壊れないように変換して使う。
+ * FlowJson -> Mermaid（flowchart）
  */
-function safeId(raw: string) {
-  let id = (raw ?? "").trim();
-  if (!id) id = "n";
-  id = id.replace(/[^A-Za-z0-9_]/g, "_");
-  if (/^[0-9]/.test(id)) id = `n_${id}`;
-  return id;
-}
+export function flowToMermaid(flow: FlowJson, orientation: "TD" | "LR" = "TD"): string {
+  const dir = orientation === "LR" ? "LR" : "TD";
+  const nodes = Array.isArray(flow?.nodes) ? flow.nodes : [];
+  const edges = Array.isArray(flow?.edges) ? flow.edges : [];
 
-function normEdgeLabel(s: string) {
-  return (s ?? "").trim().toLowerCase();
-}
-
-function isYesLabel(s: string) {
-  const t = normEdgeLabel(s);
-  return (
-    t.includes("yes") ||
-    t === "y" ||
-    t.includes("true") ||
-    t.includes("はい") ||
-    t.includes("有") ||
-    t.includes("あり") ||
-    t.includes("不足あり") ||
-    t.includes("在庫不足") // ざっくり吸収
-  );
-}
-
-function isNoLabel(s: string) {
-  const t = normEdgeLabel(s);
-  return (
-    t.includes("no") ||
-    t === "n" ||
-    t.includes("false") ||
-    t.includes("いいえ") ||
-    t.includes("無") ||
-    t.includes("なし") ||
-    t.includes("不足なし")
-  );
-}
-
-export function flowToMermaid(flow: Flow, orientation: "TD" | "LR" = "TD") {
   const lines: string[] = [];
-  lines.push(`flowchart ${orientation}`);
+  lines.push(`flowchart ${dir}`);
 
-  // 変換マップ（元ID → Mermaid安全ID）
-  const idMap = new Map<string, string>();
-  for (const n of flow.nodes) {
-    idMap.set(n.id, safeId(n.id));
+  for (const n of nodes) {
+    lines.push(`  ${nodeToMermaid(n)}`);
   }
 
-  // Node定義
-  for (const n of flow.nodes) {
-    const mid = idMap.get(n.id)!;
-    const label = sanitizeLabel(n.label);
-
-    if (n.type === "decision") {
-      lines.push(`  ${mid}{${label}}`);
-    } else if (n.type === "start" || n.type === "end") {
-      lines.push(`  ${mid}([${label}])`);
-    } else {
-      lines.push(`  ${mid}[${label}]`);
-    }
-  }
-
-  // Edge定義
-  const edges = flow.edges ?? [];
   for (const e of edges) {
-    const from = idMap.get(e.from);
-    const to = idMap.get(e.to);
-    if (!from || !to) continue;
-
-    if (e.label) {
-      const el = sanitizeLabel(e.label);
-      lines.push(`  ${from} -->|${el}| ${to}`);
-    } else {
-      lines.push(`  ${from} --> ${to}`);
-    }
-  }
-
-  // スタイル
-  lines.push("");
-  lines.push("  classDef task fill:#120c24,stroke:#a78bfa,stroke-width:1px,color:#fff;");
-  lines.push("  classDef decision fill:#1a1330,stroke:#a78bfa,stroke-width:1px,color:#fff;");
-  lines.push("  classDef terminal fill:#0f0b1f,stroke:#a78bfa,stroke-width:1px,color:#fff;");
-  lines.push("");
-
-  for (const n of flow.nodes) {
-    const mid = idMap.get(n.id)!;
-    if (n.type === "decision") lines.push(`  class ${mid} decision;`);
-    else if (n.type === "start" || n.type === "end") lines.push(`  class ${mid} terminal;`);
-    else lines.push(`  class ${mid} task;`);
+    const lbl = normalizeEdgeLabel(e.label);
+    if (lbl) lines.push(`  ${e.from} -- ${escLabel(lbl)} --> ${e.to}`);
+    else lines.push(`  ${e.from} --> ${e.to}`);
   }
 
   return lines.join("\n");
 }
 
 /**
- * ✅ “読みやすい処理順”を作る
- * - 以前: トポロジカルソート（分岐の順が人間の感覚とズレやすい）
- * - 変更: start から辿り、decision は Yes/No を明示して並べる
- *   例:
- *   1. 開始
- *   2. 注文Excelを確認
- *   3. 在庫と照合
- *   4. 在庫不足か
- *   5. Yes: 発注
- *   6. Yes: Slackに通知
- *   7. No: 出荷準備へ
- *   8. 終了
+ * フローから「処理順」を導出（Yes→No 優先）
+ * - UI側で「1. 」を除去している想定でも、番号付きで返してOK
  */
-export function deriveSteps(flow: Flow): string[] {
-  const byId = new Map(flow.nodes.map((n) => [n.id, n]));
-  const edges = flow.edges ?? [];
+export function deriveSteps(flow: FlowJson): string[] {
+  const nodes = Array.isArray(flow?.nodes) ? flow.nodes : [];
+  const edges = Array.isArray(flow?.edges) ? flow.edges : [];
+  if (!nodes.length) return [];
 
-  // adjacency
-  const out = new Map<string, Array<{ to: string; label?: string }>>();
-  for (const n of flow.nodes) out.set(n.id, []);
-  for (const e of edges) out.get(e.from)?.push({ to: e.to, label: e.label });
+  const nodeMap = new Map<string, FlowNode>(nodes.map((n) => [n.id, n]));
 
-  const startNode =
-    flow.nodes.find((n) => n.type === "start") ??
-    flow.nodes.find((n) => (out.get(n.id)?.length ?? 0) > 0) ??
-    flow.nodes[0];
-
-  const endNode = flow.nodes.find((n) => n.type === "end");
-  const stopId = endNode?.id;
-
-  // 分岐対応のトラバース（stopId は末尾で1回だけ出す）
-  function expandFrom(startId: string | undefined, prefix: string, localStopId?: string): string[] {
-    if (!startId) return [];
-    if (localStopId && startId === localStopId) return [];
-
-    const res: string[] = [];
-    const visited = new Set<string>();
-    let id: string | undefined = startId;
-
-    while (id && !(localStopId && id === localStopId) && !visited.has(id)) {
-      visited.add(id);
-
-      const node = byId.get(id);
-      if (!node) break;
-
-      res.push(`${prefix}${node.label}`);
-
-      const outs = out.get(id) ?? [];
-      if (node.type === "end") break;
-
-      // decision or multi-out: 分岐として扱う
-      if (node.type === "decision" || outs.length > 1) {
-        const yesEdge = outs.find((o) => isYesLabel(o.label ?? ""));
-        const noEdge = outs.find((o) => isNoLabel(o.label ?? ""));
-
-        const used = new Set<string>();
-        const y = yesEdge ?? outs[0];
-        const n = noEdge ?? outs.find((x) => x !== y) ?? outs[1];
-
-        if (y) {
-          used.add(`${y.to}:${y.label ?? ""}`);
-          res.push(...expandFrom(y.to, `${prefix}Yes: `, localStopId));
-        }
-        if (n) {
-          used.add(`${n.to}:${n.label ?? ""}`);
-          res.push(...expandFrom(n.to, `${prefix}No: `, localStopId));
-        }
-
-        // それ以外の枝（万一）
-        for (const o of outs) {
-          if (used.has(`${o.to}:${o.label ?? ""}`)) continue;
-          const tag = o.label ? sanitizeLabel(o.label) : "Branch";
-          res.push(...expandFrom(o.to, `${prefix}${tag}: `, localStopId));
-        }
-
-        break;
-      }
-
-      // linear
-      if (outs.length === 1) {
-        id = outs[0].to;
-        continue;
-      }
-
-      break;
-    }
-
-    return res;
+  // ✅ ここが肝：Map を型付きで定義（noImplicitAny 対策）
+  const out = new Map<string, FlowEdge[]>();
+  for (const e of edges) {
+    const list = out.get(e.from) ?? [];
+    list.push(e);
+    out.set(e.from, list);
   }
 
-  const labels = expandFrom(startNode?.id, "", stopId);
-  if (endNode) labels.push(endNode.label);
+  const start = nodes.find((n) => n.type === "start") ?? nodes[0];
 
-  // 空のときの保険
-  const final = labels.length ? labels : flow.nodes.map((n) => n.label);
+  const visited = new Set<string>();
+  const order: string[] = [];
 
-  return final.map((t, i) => `${i + 1}. ${t}`);
+  const score = (lbl: string) => (lbl === "Yes" ? 0 : lbl === "No" ? 1 : 2);
+  const sortOut = (list: FlowEdge[]) =>
+    [...list].sort((a, b) => score(normalizeEdgeLabel(a.label)) - score(normalizeEdgeLabel(b.label)));
+
+  const q: string[] = [start.id];
+
+  while (q.length) {
+    const id = q.shift() as string;
+    if (visited.has(id)) continue;
+    visited.add(id);
+
+    const node = nodeMap.get(id);
+    if (node) order.push(node.label);
+
+    if (node?.type === "end") continue;
+
+    const outs: FlowEdge[] = out.get(id) ?? [];
+    for (const e of sortOut(outs)) {
+      if (!visited.has(e.to)) q.push(e.to);
+    }
+  }
+
+  // 未到達ノードを最後に追加（孤立対策）
+  for (const n of nodes) {
+    if (!visited.has(n.id)) order.push(n.label);
+  }
+
+  // 番号付け
+  return order.map((label, i) => `${i + 1}. ${label}`);
 }
 
-export function deriveConditions(flow: Flow) {
-  const byId = new Map(flow.nodes.map((n) => [n.id, n]));
-  const edges = flow.edges ?? [];
-  const result: Array<{ condition: string; yes?: string; no?: string }> = [];
+/**
+ * decision の Yes/No 分岐先を導出
+ */
+export function deriveConditions(flow: FlowJson): DerivedCondition[] {
+  const nodes = Array.isArray(flow?.nodes) ? flow.nodes : [];
+  const edges = Array.isArray(flow?.edges) ? flow.edges : [];
 
-  for (const n of flow.nodes) {
-    if (n.type !== "decision") continue;
+  const nodeMap = new Map<string, FlowNode>(nodes.map((n) => [n.id, n]));
 
-    const outs = edges.filter((e) => e.from === n.id);
-    const yes = outs.find((o) => isYesLabel(o.label ?? ""));
-    const no = outs.find((o) => isNoLabel(o.label ?? ""));
-
-    result.push({
-      condition: n.condition ?? n.label,
-      yes: yes ? byId.get(yes.to)?.label : undefined,
-      no: no ? byId.get(no.to)?.label : undefined,
-    });
+  // ✅ 型付きMap
+  const out = new Map<string, FlowEdge[]>();
+  for (const e of edges) {
+    const list = out.get(e.from) ?? [];
+    list.push(e);
+    out.set(e.from, list);
   }
 
-  return result;
+  const decisions = nodes.filter((n) => n.type === "decision");
+
+  return decisions.map((d) => {
+    const outs: FlowEdge[] = out.get(d.id) ?? [];
+    const yes = outs.find((e) => normalizeEdgeLabel(e.label) === "Yes");
+    const no = outs.find((e) => normalizeEdgeLabel(e.label) === "No");
+
+    return {
+      condition: d.condition ?? d.label,
+      yes: yes ? nodeMap.get(yes.to)?.label : undefined,
+      no: no ? nodeMap.get(no.to)?.label : undefined,
+    };
+  });
 }
