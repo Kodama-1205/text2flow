@@ -10,7 +10,7 @@ type Props = {
 };
 
 export default function CopyButton({ label, value, className }: Props) {
-  const [msg, setMsg] = useState<string>("");
+  const [toast, setToast] = useState<string>("");
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -20,13 +20,11 @@ export default function CopyButton({ label, value, className }: Props) {
   }, []);
 
   async function copyText(text: string) {
-    // 1) Clipboard API（基本）
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
       return;
     }
 
-    // 2) フォールバック（古い環境/権限NG用）
     const ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
@@ -40,29 +38,28 @@ export default function CopyButton({ label, value, className }: Props) {
     if (!ok) throw new Error("copy_failed");
   }
 
+  function showToast(message: string) {
+    setToast(message);
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setToast(""), 1600);
+  }
+
   async function onClick() {
-    // 空でも押せるが、意味がないので明示
     const v = String(value ?? "");
     if (!v) {
-      setMsg("コピーする内容がありません");
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => setMsg(""), 1600);
+      showToast("コピーする内容がありません");
       return;
     }
-
     try {
       await copyText(v);
-      setMsg("コピーしました");
+      showToast("コピーしました");
     } catch {
-      setMsg("コピーに失敗しました（ブラウザ権限を確認）");
-    } finally {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => setMsg(""), 1600);
+      showToast("コピーに失敗しました（権限/HTTPSを確認）");
     }
   }
 
   return (
-    <div className={styles.wrap}>
+    <>
       <button
         type="button"
         className={`${styles.btn} ${className ?? ""}`}
@@ -71,10 +68,12 @@ export default function CopyButton({ label, value, className }: Props) {
         {label}
       </button>
 
-      {/* 親レイアウトに潰されないよう “通常フロー” で出す */}
-      <div className={styles.msg} aria-live="polite">
-        {msg}
-      </div>
-    </div>
+      {/* レイアウトに影響しない固定トースト */}
+      {toast ? (
+        <div className={styles.toast} aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
+    </>
   );
 }
