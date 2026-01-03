@@ -1,7 +1,7 @@
 // /web/app/result/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import Tabs from "@/components/Tabs";
 import MermaidRenderer from "@/components/MermaidRenderer";
@@ -93,7 +93,6 @@ function isFlowJson(v: any): v is FlowJson {
 }
 
 function mermaidEscapeLabel(s: string) {
-  // Mermaid上で致命的になりやすい文字だけ軽く避ける
   return String(s).replace(/\r?\n/g, " ").replace(/"/g, '\\"');
 }
 
@@ -122,12 +121,10 @@ function buildMermaidFromFlow(flow: FlowJson, orientation: string) {
   const lines: string[] = [];
   lines.push(`flowchart ${dir}`);
 
-  // node definitions
   for (const n of nodes) {
     lines.push(`  ${nodeToMermaid(n)}`);
   }
 
-  // edges
   for (const e of edges) {
     const lbl = edgeLabelNormalize(e.label);
     if (lbl) lines.push(`  ${e.from} -- ${mermaidEscapeLabel(lbl)} --> ${e.to}`);
@@ -154,7 +151,6 @@ function computeSteps(flow: FlowJson): string[] {
   const order: string[] = [];
 
   function sortOutgoing(list: FlowEdge[]) {
-    // decisionは Yes→No を優先
     return [...list].sort((a, b) => {
       const al = edgeLabelNormalize(a.label);
       const bl = edgeLabelNormalize(b.label);
@@ -178,7 +174,6 @@ function computeSteps(flow: FlowJson): string[] {
     }
   }
 
-  // 未到達ノードも最後に追加（孤立対策）
   for (const n of nodes) {
     if (!visited.has(n.id)) order.push(n.label);
   }
@@ -223,11 +218,29 @@ function readLastOrientation(): string {
   }
 }
 
+type ToastState = { msg: string } | null;
+
 export default function ResultPage() {
   const [data, setData] = useState<Result | null>(null);
   const [tab, setTab] = useState("steps");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // --- Toast（成功メッセージ） ---
+  const [toast, setToast] = useState<ToastState>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  function showToast(msg: string) {
+    setToast({ msg });
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 1800);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   const canShowDebug = useMemo(() => !!data?.debug, [data]);
   const rawPrimary = useMemo(() => {
@@ -249,14 +262,11 @@ export default function ResultPage() {
   }, []);
 
   const tabs = useMemo(() => {
-    // debugが無いときは debug/raw を隠す（ユーザーに不要な情報を出さない）
     if (!canShowDebug) return TAB_ITEMS.filter((t) => t.key !== "debug" && t.key !== "raw");
-    // debugはあるが raw が空なら raw は隠す
     if (canShowDebug && !rawPrimary) return TAB_ITEMS.filter((t) => t.key !== "raw");
     return TAB_ITEMS;
   }, [canShowDebug, rawPrimary]);
 
-  // flow_json をクライアント側で修復して、表示を上書きできるようにする
   const repaired = useMemo(() => {
     if (!data) return { flow: null as FlowJson | null, usedRepair: false };
 
@@ -324,6 +334,7 @@ export default function ResultPage() {
 
       sessionStorage.setItem("text2flow:lastResult", JSON.stringify(next));
       setData(next);
+      showToast("再生成しました");
     } catch (e: any) {
       setErr(e?.message ?? "再生成に失敗しました");
     } finally {
@@ -344,6 +355,21 @@ export default function ResultPage() {
     a.download = "text2flow.svg";
     a.click();
     URL.revokeObjectURL(url);
+
+    showToast("SVGをダウンロードしました");
+  }
+
+  // CopyButtonはそのまま使い、親の capture で「コピー系クリック」を検知してトーストを出す
+  function onCopyActionCapture(e: React.SyntheticEvent) {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    const btn = target.closest("button");
+    if (!btn) return;
+
+    const label = (btn.textContent ?? "").trim();
+    if (label === "Copy Mermaid") showToast("Mermaidをコピーしました");
+    else if (label === "Copy") showToast("コピーしました");
   }
 
   if (!data) {
@@ -368,6 +394,31 @@ export default function ResultPage() {
 
   return (
     <AppShell>
+      {/* Toast（UIはCSS触らず、inlineで最小実装） */}
+      {toast ? (
+        <div
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            right: 18,
+            bottom: 18,
+            zIndex: 50,
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid rgba(168, 85, 247, 0.35)",
+            background: "rgba(10, 8, 20, 0.82)",
+            color: "rgba(255,255,255,0.92)",
+            backdropFilter: "blur(10px)",
+            boxShadow: "0 12px 30px rgba(0,0,0,0.35)",
+            fontSize: 13,
+            lineHeight: 1.2,
+            maxWidth: 320,
+          }}
+        >
+          {toast.msg}
+        </div>
+      ) : null}
+
       <div className={styles.topbar}>
         <div>
           <div className={styles.title}>Generated Flow</div>
@@ -399,7 +450,8 @@ export default function ResultPage() {
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <div className={styles.sectionTitle}>Flow Diagram</div>
-          <div className={styles.sectionActions}>
+
+          <div className={styles.sectionActions} onClickCapture={onCopyActionCapture}>
             <CopyButton label="Copy Mermaid" value={mermaidCode} />
             <button className={styles.smallBtn} type="button" onClick={downloadSvg}>
               Download SVG
@@ -421,7 +473,7 @@ export default function ResultPage() {
           </div>
         </div>
 
-        <div className={styles.panel}>
+        <div className={styles.panel} onClickCapture={onCopyActionCapture}>
           {tab === "steps" && (
             <div>
               <div className={styles.panelTitle}>処理順</div>
