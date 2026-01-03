@@ -1,4 +1,3 @@
-// /web/app/result/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -43,7 +42,7 @@ const TAB_ITEMS = [
   { key: "dify", label: "Dify雛形" },
   { key: "code", label: "Mermaidコード" },
   { key: "json", label: "JSON" },
-  { key: "debug", label: "Debug" },
+  { key: "debug", label: "デバッグ" },
 ];
 
 function safeParseJsonLoose(raw: unknown): any | null {
@@ -53,12 +52,11 @@ function safeParseJsonLoose(raw: unknown): any | null {
 
   const cleaned = raw
     .replace(/^\uFEFF/, "") // BOM
-    .replace(/\u00A0/g, " ") // ★ NBSP
     .replace(/```json\s*/gi, "")
     .replace(/```\s*/g, "")
     .trim()
-    // 末尾カンマ除去（配列/オブジェクト）
-    .replace(/,\s*([}\]])/g, "$1");
+    .replace(/\u00A0/g, " ") // NBSP
+    .replace(/,\s*([}\]])/g, "$1"); // 末尾カンマ除去
 
   try {
     return JSON.parse(cleaned);
@@ -114,23 +112,19 @@ function edgeLabelNormalize(l?: string) {
 
 function buildMermaidFromFlow(flow: FlowJson, orientation: string) {
   const dir = orientation === "LR" ? "LR" : "TD";
-
   const nodes = flow.nodes ?? [];
   const edges = flow.edges ?? [];
 
   const lines: string[] = [];
   lines.push(`flowchart ${dir}`);
 
-  for (const n of nodes) {
-    lines.push(`  ${nodeToMermaid(n)}`);
-  }
+  for (const n of nodes) lines.push(`  ${nodeToMermaid(n)}`);
 
   for (const e of edges) {
     const lbl = edgeLabelNormalize(e.label);
     if (lbl) lines.push(`  ${e.from} -- ${mermaidEscapeLabel(lbl)} --> ${e.to}`);
     else lines.push(`  ${e.from} --> ${e.to}`);
   }
-
   return lines.join("\n");
 }
 
@@ -169,15 +163,10 @@ function computeSteps(flow: FlowJson): string[] {
     if (n) order.push(n.label);
 
     const outs = outMap.get(id) ?? [];
-    for (const e of sortOutgoing(outs)) {
-      if (!visited.has(e.to)) q.push(e.to);
-    }
+    for (const e of sortOutgoing(outs)) if (!visited.has(e.to)) q.push(e.to);
   }
 
-  for (const n of nodes) {
-    if (!visited.has(n.id)) order.push(n.label);
-  }
-
+  for (const n of nodes) if (!visited.has(n.id)) order.push(n.label);
   return order;
 }
 
@@ -200,11 +189,7 @@ function computeConditions(flow: FlowJson): Array<{ condition: string; yes?: str
     const yesLabel = yesEdge ? nodeMap.get(yesEdge.to)?.label : undefined;
     const noLabel = noEdge ? nodeMap.get(noEdge.to)?.label : undefined;
 
-    return {
-      condition: d.condition ?? d.label,
-      yes: yesLabel,
-      no: noLabel,
-    };
+    return { condition: d.condition ?? d.label, yes: yesLabel, no: noLabel };
   });
 }
 
@@ -287,7 +272,7 @@ export default function ResultPage() {
 
       const lastInput = sessionStorage.getItem("text2flow:lastInputText") || "";
       if (!lastInput.trim()) {
-        setErr("元の入力が見つかりません。/input から再生成してください。");
+        setErr("元の入力が見つかりません。入力画面から再生成してください。");
         return;
       }
 
@@ -337,7 +322,7 @@ export default function ResultPage() {
       <AppShell>
         <div className={styles.empty}>
           <div className={styles.emptyTitle}>結果がありません</div>
-          <div className={styles.emptyText}>/input から生成して /result を開いてください。</div>
+          <div className={styles.emptyText}>入力画面で生成してから結果画面を開いてください。</div>
           <a className={styles.link} href="/input">
             入力画面へ戻る →
           </a>
@@ -356,8 +341,13 @@ export default function ResultPage() {
     <AppShell>
       <div className={styles.topbar}>
         <div>
-          <div className={styles.title}>Generated Flow</div>
+          <div className={styles.title}>生成結果</div>
           <div className={styles.sub}>{data.explanation}</div>
+          {repaired.flow && repaired.usedRepair ? (
+            <div className={styles.sub} style={{ opacity: 0.8, marginTop: 6 }}>
+              ※ flow_json_raw を自動補正して表示しています（末尾カンマ/```json など）
+            </div>
+          ) : null}
         </div>
 
         <div className={styles.topActions}>
@@ -366,10 +356,10 @@ export default function ResultPage() {
             type="button"
             onClick={() => (window.location.href = "/input")}
           >
-            ← Edit
+            ← 編集
           </button>
           <button className={styles.primary} type="button" onClick={onRegenerate} disabled={busy}>
-            {busy ? "Regenerating..." : "Regenerate"}
+            {busy ? "再生成中..." : "再生成"}
           </button>
         </div>
       </div>
@@ -378,11 +368,12 @@ export default function ResultPage() {
 
       <section className={styles.section}>
         <div className={styles.sectionHead}>
-          <div className={styles.sectionTitle}>Flow Diagram</div>
+          <div className={styles.sectionTitle}>フロー図</div>
           <div className={styles.sectionActions}>
-            <CopyButton label="Copy Mermaid" value={mermaidCode} />
+            {/* ★ここで smallBtn を渡して、Download と色・サイズを統一 */}
+            <CopyButton className={styles.smallBtn} label="Mermaidをコピー" value={mermaidCode} />
             <button className={styles.smallBtn} type="button" onClick={downloadSvg}>
-              Download SVG
+              SVGを保存
             </button>
           </div>
         </div>
@@ -394,7 +385,7 @@ export default function ResultPage() {
 
       <section className={styles.section}>
         <div className={styles.sectionHead}>
-          <div className={styles.sectionTitle}>Details</div>
+          <div className={styles.sectionTitle}>詳細</div>
           <div className={styles.tabsWrap}>
             <Tabs items={tabs} activeKey={tab} onChange={setTab} />
           </div>
@@ -441,7 +432,7 @@ export default function ResultPage() {
             <div>
               <div className={styles.panelHead2}>
                 <div className={styles.panelTitle}>Difyワークフロー雛形</div>
-                <CopyButton label="Copy" value={data.dify_template ?? ""} />
+                <CopyButton className={styles.smallBtn} label="コピー" value={data.dify_template ?? ""} />
               </div>
               <pre className={styles.pre}>{data.dify_template}</pre>
             </div>
@@ -451,7 +442,7 @@ export default function ResultPage() {
             <div>
               <div className={styles.panelHead2}>
                 <div className={styles.panelTitle}>Mermaidコード</div>
-                <CopyButton label="Copy" value={mermaidCode} />
+                <CopyButton className={styles.smallBtn} label="コピー" value={mermaidCode} />
               </div>
               <pre className={styles.pre}>{mermaidCode}</pre>
             </div>
@@ -461,7 +452,7 @@ export default function ResultPage() {
             <div>
               <div className={styles.panelHead2}>
                 <div className={styles.panelTitle}>flow_json</div>
-                <CopyButton label="Copy" value={jsonText} />
+                <CopyButton className={styles.smallBtn} label="コピー" value={jsonText} />
               </div>
               <pre className={styles.pre}>{jsonText}</pre>
             </div>
@@ -470,8 +461,12 @@ export default function ResultPage() {
           {tab === "debug" && (
             <div>
               <div className={styles.panelHead2}>
-                <div className={styles.panelTitle}>Debug</div>
-                <CopyButton label="Copy" value={JSON.stringify(data.debug ?? {}, null, 2)} />
+                <div className={styles.panelTitle}>デバッグ</div>
+                <CopyButton
+                  className={styles.smallBtn}
+                  label="コピー"
+                  value={JSON.stringify(data.debug ?? {}, null, 2)}
+                />
               </div>
               <pre className={styles.pre}>{JSON.stringify(data.debug ?? {}, null, 2)}</pre>
             </div>

@@ -24,7 +24,6 @@ export default function CopyButton({ label, value, className }: Props) {
       await navigator.clipboard.writeText(text);
       return;
     }
-
     const ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
@@ -58,17 +57,15 @@ export default function CopyButton({ label, value, className }: Props) {
     }
   }
 
+  // ★外からの className を優先（/result の smallBtn で色を統一できる）
+  const btnClass = className ? className : styles.btn;
+
   return (
     <>
-      <button
-        type="button"
-        className={`${styles.btn} ${className ?? ""}`}
-        onClick={onClick}
-      >
+      <button type="button" className={btnClass} onClick={onClick}>
         {label}
       </button>
 
-      {/* レイアウトに影響しない固定トースト */}
       {toast ? (
         <div className={styles.toast} aria-live="polite">
           {toast}
