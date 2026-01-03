@@ -31,20 +31,8 @@ const samples = [
   },
 ];
 
-// 初期表示は“例”として見せるだけ（valueには入れない）
-const DEFAULT_EXAMPLE = `例）
-1. 注文Excelを確認
-2. 在庫と照合する
-3. もし在庫が足りないなら：発注してSlack通知
-4. そうでなければ：出荷準備へ進む
-5. 終了`;
-
 export default function InputPage() {
-  // ★最初は空
-  const [text, setText] = useState("");
-  // ★「ユーザーが触ったか（入力した or サンプル選んだ）」フラグ
-  const [touched, setTouched] = useState(false);
-
+  const [text, setText] = useState(samples[0].text);
   const [orientation, setOrientation] = useState<Orientation>("TD");
   const [detail, setDetail] = useState<Detail>("simple");
   const [maxNodes, setMaxNodes] = useState(20);
@@ -55,20 +43,9 @@ export default function InputPage() {
 
   const textCount = useMemo(() => text.trim().length, [text]);
 
-  // ★ブラウザ復元で text が入っても、touched=false の間は生成不可
-  const canGenerate = useMemo(() => {
-    return touched && text.trim().length > 0;
-  }, [touched, text]);
-
   async function onGenerate() {
     setError("");
     const t = text.trim();
-
-    // ★触ってない（例扱い）なら生成させない
-    if (!touched) {
-      setError("文章を入力するか、下のサンプルから選択してください。");
-      return;
-    }
     if (!t) {
       setError("文章を入力してください。");
       return;
@@ -106,17 +83,7 @@ export default function InputPage() {
 
   function onSample(name: string) {
     const s = samples.find((x) => x.name === name);
-    if (s) {
-      setText(s.text);
-      setTouched(true); // ★サンプル選択は「触った」扱い
-      setError("");
-    }
-  }
-
-  function onClear() {
-    setText("");
-    setTouched(false); // ★クリアしたらまた例扱い（生成不可）
-    setError("");
+    if (s) setText(s.text);
   }
 
   return (
@@ -136,11 +103,8 @@ export default function InputPage() {
           <textarea
             className={styles.textarea}
             value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setTouched(true); // ★入力したら生成可
-            }}
-            placeholder={DEFAULT_EXAMPLE}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="例）① 注文Excelを確認 ② 在庫と照合 ③ 不足分をSlack通知"
           />
 
           <div className={styles.row}>
@@ -165,13 +129,17 @@ export default function InputPage() {
               className={styles.primary}
               type="button"
               onClick={onGenerate}
-              disabled={loading || !canGenerate}
-              title={!canGenerate ? "文章を入力するか、サンプルを選択してください" : ""}
+              disabled={loading}
             >
-              {loading ? "Generating..." : "Generate Flow"}
+              {loading ? "生成中..." : "フローを生成"}
             </button>
-            <button className={styles.secondary} type="button" onClick={onClear} disabled={loading}>
-              Clear
+            <button
+              className={styles.secondary}
+              type="button"
+              onClick={() => setText("")}
+              disabled={loading}
+            >
+              クリア
             </button>
           </div>
         </section>
