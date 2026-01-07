@@ -11,6 +11,10 @@ type Req = {
   debug?: boolean;
 };
 
+function isDemoMode() {
+  return (process.env.DEMO_MODE ?? "").toLowerCase() === "true";
+}
+
 function mockResult(
   req: Required<Pick<Req, "text" | "orientation" | "detail" | "maxNodes" | "debug">>
 ): Text2FlowResult {
@@ -46,7 +50,8 @@ function mockResult(
       detail: req.detail,
       maxNodes: req.maxNodes,
     }),
-    explanation: "※現在はモック結果です。DIFY_API_KEY を設定すると Dify の結果で置き換わります。",
+    explanation:
+      "これはデモモード（DEMO_MODE=true）の固定出力です。見せたい時だけ DEMO_MODE=false にして本番呼び出しに切り替えてください。",
     ...(req.debug ? { debug: { mock: true, receivedTextPreview: req.text.slice(0, 140) } } : {}),
   };
 }
@@ -174,7 +179,12 @@ export async function POST(request: Request) {
   const maxNodes = Math.max(5, Math.min(40, body.maxNodes ?? 20));
   const debug = !!body.debug;
 
-  // APIキー未設定ならモックで動作
+  // ✅ 普段はデモ（課金0）。見せたい時だけ DEMO_MODE=false にする
+  if (isDemoMode()) {
+    return NextResponse.json(mockResult({ text, orientation, detail, maxNodes, debug }));
+  }
+
+  // APIキー未設定ならモックで動作（ローカル/検証向け）
   if (!process.env.DIFY_API_KEY) {
     return NextResponse.json(mockResult({ text, orientation, detail, maxNodes, debug }));
   }
