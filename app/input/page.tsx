@@ -37,7 +37,7 @@ export default function InputPage() {
   const [orientation, setOrientation] = useState<Orientation>("TD");
   const [detail, setDetail] = useState<Detail>("simple");
   const [maxNodes, setMaxNodes] = useState(20);
-  const [debug, setDebug] = useState(false);
+  const debug = false;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -191,9 +191,7 @@ export default function InputPage() {
                 詳細
               </button>
             </div>
-            <div className={styles.help}>
-              ※ Dify側のプロンプトで粒度を調整する想定（このUIは最初から搭載）。
-            </div>
+            <div className={styles.help}>用途に応じて処理の粒度を選択できます。</div>
           </div>
 
           <div className={styles.field}>
@@ -206,25 +204,7 @@ export default function InputPage() {
               value={maxNodes}
               onChange={(e) => setMaxNodes(Number(e.target.value))}
             />
-            <div className={styles.help}>暴走防止（MVPでも安定運用しやすい）。</div>
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.check}>
-              <input
-                type="checkbox"
-                checked={debug}
-                onChange={(e) => setDebug(e.target.checked)}
-              />
-              <span>デバッグ情報を出力（開発用）</span>
-            </label>
-          </div>
-
-          <div className={styles.note}>
-            <div className={styles.noteTitle}>Dify連携について</div>
-            <div className={styles.noteText}>
-              APIキー未設定でもモックで動きます。Dify連携は /api/flow 経由で行い、キーはフロントに出しません。
-            </div>
+            <div className={styles.help}>5〜40 の範囲で指定できます。</div>
           </div>
         </aside>
       </div>
