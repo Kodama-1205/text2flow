@@ -119,7 +119,21 @@ function buildMermaidFromFlow(flow: FlowJson, orientation: string) {
   const lines: string[] = [];
   lines.push(`flowchart ${dir}`);
 
-  for (const n of nodes) lines.push(`  ${nodeToMermaid(n)}`);
+  // ノードタイプごとのスタイル定義
+  lines.push(`  classDef startEnd fill:#0ea5e9,stroke:#0284c7,color:#fff,font-weight:bold`);
+  lines.push(`  classDef task fill:#6d28d9,stroke:#7c3aed,color:#fff`);
+  lines.push(`  classDef decision fill:#d97706,stroke:#b45309,color:#fff`);
+
+  const classMap: Record<string, string> = {
+    start: "startEnd",
+    end: "startEnd",
+    task: "task",
+    decision: "decision",
+  };
+
+  for (const n of nodes) {
+    lines.push(`  ${nodeToMermaid(n)}:::${classMap[n.type] ?? "task"}`);
+  }
 
   for (const e of edges) {
     const lbl = edgeLabelNormalize(e.label);

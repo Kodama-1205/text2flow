@@ -1,19 +1,19 @@
-:root{
-  --bg: #0b0b14;
+:root {
+  --bg: #080812;
   --panel: rgba(255,255,255,.06);
   --panel2: rgba(255,255,255,.08);
-  --border: rgba(167,139,250,.28);
+  --border: rgba(124,58,237,.28);
 
   --text: rgba(255,255,255,.92);
-  --muted: rgba(255,255,255,.70);
+  --muted: rgba(255,255,255,.65);
 
   --primary: #7c3aed;
   --primaryHover: #6d28d9;
   --accent: #a78bfa;
   --tint: rgba(124,58,237,.18);
 
-  --shadow: 0 12px 30px rgba(0,0,0,.35);
-  --radius: 18px;
+  --shadow: 0 12px 32px rgba(0,0,0,.45);
+  --radius: 20px;
 }
 
 *{ box-sizing:border-box; }
@@ -22,10 +22,10 @@ body{
   margin:0;
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 15% 10%, rgba(124,58,237,.28), transparent 55%),
-    radial-gradient(900px 520px at 80% 20%, rgba(167,139,250,.18), transparent 55%),
-    radial-gradient(900px 520px at 60% 85%, rgba(124,58,237,.12), transparent 55%),
-    var(--bg);
+    radial-gradient(1000px 500px at 10% 5%, rgba(109,40,217,.20), transparent 60%),
+    radial-gradient(700px 380px at 88% 12%, rgba(167,139,250,.13), transparent 60%),
+    radial-gradient(600px 380px at 55% 92%, rgba(109,40,217,.09), transparent 60%),
+    #080812;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
 }
 

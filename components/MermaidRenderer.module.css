@@ -1,28 +1,78 @@
-.wrap{
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(255,255,255,.05);
-  padding: 14px;
-  box-shadow: var(--shadow);
+.wrap {
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(124, 58, 237, 0.14) 0%, transparent 65%),
+    linear-gradient(180deg, rgba(15, 11, 30, 0.95) 0%, rgba(9, 6, 18, 0.98) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.28);
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.07) inset,
+    0 24px 64px rgba(0, 0, 0, 0.55),
+    0 0 80px rgba(124, 58, 237, 0.08);
+  padding: 24px;
+  overflow: hidden;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.canvas{
-  overflow:auto;
-  min-height: 320px;
+.canvas {
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
-.error{
-  padding: 14px;
+.canvas :global(svg) {
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 6px 28px rgba(124, 58, 237, 0.22));
+}
+
+/* ローディング */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 56px 0;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(167, 139, 250, 0.18);
+  border-top-color: rgba(167, 139, 250, 0.88);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loadingText {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.2px;
+}
+
+/* エラー */
+.error {
+  padding: 20px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 99, 132, .35);
-  background: rgba(255, 99, 132, .08);
+  border: 1px solid rgba(255, 99, 132, 0.35);
+  background: rgba(255, 99, 132, 0.08);
 }
-.errorTitle{
+
+.errorTitle {
   font-weight: 760;
   margin-bottom: 6px;
 }
-.errorText{
-  color: rgba(255,255,255,.75);
+
+.errorText {
+  color: rgba(255, 255, 255, 0.75);
   font-size: 13px;
   white-space: pre-wrap;
 }

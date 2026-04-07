@@ -1,44 +1,33 @@
-/* Flow Diagram のヘッダー枠に寄せる：
-   - 丸すぎない角丸
-   - 薄い紫の枠線
-   - うっすら暗い背景 + ぼかし
-   - 折り返しOK
-*/
 .wrap {
   display: flex;
-  flex-wrap: wrap;          /* ← 折り返しOK（ユーザー要望） */
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
-
-  padding: 12px 12px;
-  border-radius: 18px;      /* ← 9999pxの“カプセル”をやめる */
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(167, 139, 250, 0.25);
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(124, 58, 237, 0.22);
   backdrop-filter: blur(10px);
-
-  /* 長いラベルで横に押し広げない */
   min-width: 0;
 }
 
-/* タブ自体は Copy/Download ボタンの“角丸ボタン”に寄せる */
 .tab {
   flex: 0 0 auto;
-  border-radius: 14px; /* ← タブも丸すぎない */
-  padding: 10px 14px;
-
-  border: 1px solid rgba(167, 139, 250, 0.25);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.85);
-
-  font-size: 14px;
+  border-radius: 12px;
+  padding: 8px 13px;
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, transform 0.06s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 .tab:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(124, 58, 237, 0.10);
+  border-color: rgba(167, 139, 250, 0.32);
+  color: rgba(255, 255, 255, 0.90);
 }
 
 .tab:active {
@@ -46,7 +35,8 @@
 }
 
 .active {
-  background: rgba(167, 139, 250, 0.18);
-  border-color: rgba(167, 139, 250, 0.75);
+  background: rgba(124, 58, 237, 0.22);
+  border-color: rgba(167, 139, 250, 0.65);
   color: #fff;
+  font-weight: 600;
 }
