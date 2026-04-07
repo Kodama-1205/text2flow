@@ -11,51 +11,6 @@ type Req = {
   debug?: boolean;
 };
 
-function isDemoMode() {
-  return (process.env.DEMO_MODE ?? "").toLowerCase() === "true";
-}
-
-function mockResult(
-  req: Required<Pick<Req, "text" | "orientation" | "detail" | "maxNodes" | "debug">>
-): Text2FlowResult {
-  const flow_json = FlowSchema.parse({
-    title: "発注〜在庫確認フロー",
-    nodes: [
-      { id: "n0", label: "開始", type: "start" },
-      { id: "n1", label: "注文Excelを確認", type: "task" },
-      { id: "n2", label: "在庫と照合", type: "decision", condition: "在庫不足？" },
-      { id: "n3", label: "不足分をSlack通知", type: "task" },
-      { id: "n4", label: "終了", type: "end" },
-    ],
-    edges: [
-      { from: "n0", to: "n1" },
-      { from: "n1", to: "n2" },
-      { from: "n2", to: "n3", label: "Yes" },
-      { from: "n2", to: "n4", label: "No" },
-      { from: "n3", to: "n4" },
-    ],
-  });
-
-  const mermaid = flowToMermaid(flow_json, req.orientation);
-  const steps = deriveSteps(flow_json);
-  const conditions = deriveConditions(flow_json);
-
-  return {
-    flow_json,
-    mermaid,
-    steps,
-    conditions,
-    dify_template: buildDifyTemplateFallback({
-      orientation: req.orientation,
-      detail: req.detail,
-      maxNodes: req.maxNodes,
-    }),
-    explanation:
-      "これはデモモード（DEMO_MODE=true）の固定出力です。見せたい時だけ DEMO_MODE=false にして本番呼び出しに切り替えてください。",
-    ...(req.debug ? { debug: { mock: true, receivedTextPreview: req.text.slice(0, 140) } } : {}),
-  };
-}
-
 /**
  * Dify雛形（常に返す）: Dify側が flow_json_raw しか返さなくてもOKにする
  */
@@ -179,14 +134,8 @@ export async function POST(request: Request) {
   const maxNodes = Math.max(5, Math.min(40, body.maxNodes ?? 20));
   const debug = !!body.debug;
 
-  // ✅ 普段はデモ（課金0）。見せたい時だけ DEMO_MODE=false にする
-  if (isDemoMode()) {
-    return NextResponse.json(mockResult({ text, orientation, detail, maxNodes, debug }));
-  }
-
-  // APIキー未設定ならモックで動作（ローカル/検証向け）
   if (!process.env.DIFY_API_KEY) {
-    return NextResponse.json(mockResult({ text, orientation, detail, maxNodes, debug }));
+    return NextResponse.json({ error: "DIFY_API_KEY が設定されていません。" }, { status: 500 });
   }
 
   const user = process.env.DIFY_USER || "text2flow-web";
