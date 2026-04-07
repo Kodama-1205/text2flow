@@ -266,12 +266,30 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (e: any) {
-    return NextResponse.json(
-      {
-        error: e?.message ?? "Unknown error",
-        hint: "Dify側の入力フォーム型(text-input)と、Outputの変数名(flow_json_raw)を確認してください。",
-      },
-      { status: 500 }
-    );
+    const rawMsg: string = e?.message ?? "";
+
+    // Dify 500 エラーを日本語でわかりやすく整形
+    let userError = "フロー生成に失敗しました。";
+    let hint =
+      "Dify側の入力フォーム型(text-input)と、Outputの変数名(flow_json_raw)を確認してください。";
+
+    if (rawMsg.includes("Dify API error (500)")) {
+      userError =
+        "Dify ワークフローがエラーを返しました（500）。";
+      hint =
+        "Dify ダッシュボードでワークフローのログを確認してください。" +
+        "LLMノードのAPIキー・モデル設定、または入力変数名（text / orientation / detail / max_nodes）が正しいか確認してください。";
+    } else if (rawMsg.includes("Dify API error (401)")) {
+      userError = "Dify API キーが無効です（401）。";
+      hint = "DIFY_API_KEY を正しいものに更新してください。";
+    } else if (rawMsg.includes("Dify API error (404)")) {
+      userError = "Dify ワークフローが見つかりません（404）。";
+      hint = "DIFY_API_KEY が正しいワークフローに紐づいているか確認してください。";
+    } else if (rawMsg.includes("AbortError") || rawMsg.includes("timeout")) {
+      userError = "Dify への接続がタイムアウトしました。";
+      hint = "Dify サービスの状態を確認するか、しばらく待ってから再試行してください。";
+    }
+
+    return NextResponse.json({ error: userError, hint }, { status: 500 });
   }
 }

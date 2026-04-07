@@ -111,6 +111,8 @@
   background: rgba(248, 113, 113, 0.09);
   color: rgba(255, 255, 255, 0.90);
   font-size: 13px;
+  white-space: pre-wrap;
+  line-height: 1.6;
 }
 
 .actions {

@@ -65,7 +65,10 @@ export default function InputPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "生成に失敗しました");
+      if (!res.ok) {
+        const msg = [data?.error, data?.hint].filter(Boolean).join("\n") || "生成に失敗しました";
+        throw new Error(msg);
+      }
 
       sessionStorage.setItem("text2flow:lastInputText", t);
       sessionStorage.setItem("text2flow:lastResult", JSON.stringify(data));
