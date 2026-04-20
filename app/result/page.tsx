@@ -5,6 +5,7 @@ import AppShell from "@/components/AppShell";
 import Tabs from "@/components/Tabs";
 import MermaidRenderer from "@/components/MermaidRenderer";
 import CopyButton from "@/components/CopyButton";
+import { saveResult } from "@/lib/history";
 import styles from "./page.module.css";
 import toastStyles from "@/components/CopyButton.module.css";
 
@@ -221,6 +222,7 @@ export default function ResultPage() {
   const [tab, setTab] = useState("steps");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   // ★右下トースト（SVG保存でも表示）
   const [toast, setToast] = useState("");
@@ -251,6 +253,35 @@ export default function ResultPage() {
       // ignore
     }
   }, []);
+
+  function onSave() {
+    if (!data) return;
+    try {
+      const inputText = sessionStorage.getItem("text2flow:lastInputText") || "";
+      const configRaw = sessionStorage.getItem("text2flow:lastConfig");
+      const config = configRaw
+        ? JSON.parse(configRaw)
+        : { orientation: "TD", detail: "simple", maxNodes: 20 };
+
+      saveResult({
+        input_text: inputText,
+        explanation: data.explanation,
+        config: {
+          orientation: config.orientation ?? "TD",
+          detail: config.detail ?? "simple",
+          maxNodes: config.maxNodes ?? 20,
+        },
+        flow_json: data.flow_json,
+        mermaid: computed?.mermaid ?? data.mermaid ?? "",
+        steps: computed?.steps ?? data.steps ?? [],
+        conditions: computed?.conditions ?? data.conditions ?? [],
+      });
+      setSaved(true);
+      showToast("保存しました");
+    } catch {
+      showToast("保存に失敗しました");
+    }
+  }
 
   const tabs = useMemo(() => {
     if (!canShowDebug) return TAB_ITEMS.filter((t) => t.key !== "debug");
@@ -400,6 +431,14 @@ export default function ResultPage() {
             onClick={() => (window.location.href = "/input")}
           >
             ← 編集
+          </button>
+          <button
+            className={styles.secondary}
+            type="button"
+            onClick={onSave}
+            disabled={saved}
+          >
+            {saved ? "保存済み" : "保存する"}
           </button>
           <button className={styles.primary} type="button" onClick={onRegenerate} disabled={busy}>
             {busy ? "再生成中..." : "再生成"}

@@ -24,6 +24,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className={styles.appSub}>文章から業務フロー図を自動生成</div>
           </div>
         </div>
+        <nav className={styles.nav}>
+          <a href="/input" className={styles.navLink}>入力</a>
+          <a href="/history" className={styles.navLink}>履歴</a>
+        </nav>
       </header>
 
       <main className={styles.main}>{children}</main>
