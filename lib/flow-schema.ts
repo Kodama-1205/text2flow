@@ -26,7 +26,6 @@ export type Text2FlowResult = {
   mermaid: string;
   steps: string[];
   conditions: Array<{ condition: string; yes?: string; no?: string }>;
-  dify_template: string;
   explanation: string;
   debug?: any;
 };

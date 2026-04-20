@@ -12,7 +12,6 @@ type Result = {
   mermaid: string;
   steps: string[];
   conditions: Array<{ condition: string; yes?: string; no?: string }>;
-  dify_template: string;
   explanation: string;
   flow_json: any;
   debug?: any;
@@ -40,7 +39,6 @@ type FlowJson = {
 const TAB_ITEMS = [
   { key: "steps", label: "処理順" },
   { key: "conditions", label: "条件分岐" },
-  { key: "dify", label: "Dify雛形" },
   { key: "code", label: "Mermaidコード" },
   { key: "json", label: "JSON" },
   { key: "debug", label: "デバッグ" },
@@ -469,16 +467,6 @@ export default function ResultPage() {
               ) : (
                 <div className={styles.muted}>条件分岐は検出されませんでした。</div>
               )}
-            </div>
-          )}
-
-          {tab === "dify" && (
-            <div>
-              <div className={styles.panelHead2}>
-                <div className={styles.panelTitle}>Difyワークフロー雛形</div>
-                <CopyButton className={styles.smallBtn} label="コピー" value={data.dify_template ?? ""} />
-              </div>
-              <pre className={styles.pre}>{data.dify_template}</pre>
             </div>
           )}
 
