@@ -5,7 +5,18 @@ import AppShell from "@/components/AppShell";
 import Tabs from "@/components/Tabs";
 import MermaidRenderer from "@/components/MermaidRenderer";
 import CopyButton from "@/components/CopyButton";
-import { saveResult } from "@/lib/history";
+const CLIENT_ID_KEY = "text2flow:client_id";
+function getClientId(): string {
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    localStorage.setItem(CLIENT_ID_KEY, id);
+    return id;
+  } catch {
+    return "unknown";
+  }
+}
 import styles from "./page.module.css";
 import toastStyles from "@/components/CopyButton.module.css";
 
@@ -254,8 +265,9 @@ export default function ResultPage() {
     }
   }, []);
 
-  function onSave() {
+  async function onSave() {
     if (!data) return;
+    setSaved(true); // 二重送信防止
     try {
       const inputText = sessionStorage.getItem("text2flow:lastInputText") || "";
       const configRaw = sessionStorage.getItem("text2flow:lastConfig");
@@ -263,22 +275,33 @@ export default function ResultPage() {
         ? JSON.parse(configRaw)
         : { orientation: "TD", detail: "simple", maxNodes: 20 };
 
-      saveResult({
-        input_text: inputText,
-        explanation: data.explanation,
-        config: {
-          orientation: config.orientation ?? "TD",
-          detail: config.detail ?? "simple",
-          maxNodes: config.maxNodes ?? 20,
-        },
-        flow_json: data.flow_json,
-        mermaid: computed?.mermaid ?? data.mermaid ?? "",
-        steps: computed?.steps ?? data.steps ?? [],
-        conditions: computed?.conditions ?? data.conditions ?? [],
+      const res = await fetch("/api/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: getClientId(),
+          input_text: inputText,
+          explanation: data.explanation,
+          config: {
+            orientation: config.orientation ?? "TD",
+            detail: config.detail ?? "simple",
+            maxNodes: config.maxNodes ?? 20,
+          },
+          flow_json: data.flow_json,
+          mermaid: computed?.mermaid ?? data.mermaid ?? "",
+          steps: computed?.steps ?? data.steps ?? [],
+          conditions: computed?.conditions ?? data.conditions ?? [],
+        }),
       });
-      setSaved(true);
-      showToast("保存しました");
+
+      if (res.ok) {
+        showToast("保存しました");
+      } else {
+        setSaved(false);
+        showToast("保存に失敗しました");
+      }
     } catch {
+      setSaved(false);
       showToast("保存に失敗しました");
     }
   }

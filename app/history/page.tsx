@@ -1,11 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import MermaidRenderer from "@/components/MermaidRenderer";
-import { getHistory, deleteResult, clearHistory, type HistoryItem } from "@/lib/history";
 import styles from "./page.module.css";
 import toastStyles from "@/components/CopyButton.module.css";
+
+type HistoryItem = {
+  id: string;
+  input_text: string;
+  explanation: string;
+  config: { orientation: "TD" | "LR"; detail: "simple" | "detailed"; maxNodes: number };
+  flow_json: any;
+  mermaid: string;
+  steps: string[];
+  conditions: Array<{ condition: string; yes?: string; no?: string }>;
+  created_at: string;
+};
+
+const CLIENT_ID_KEY = "text2flow:client_id";
+
+function getClientId(): string {
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    localStorage.setItem(CLIENT_ID_KEY, id);
+    return id;
+  } catch {
+    return "unknown";
+  }
+}
 
 function formatDate(iso: string) {
   try {
@@ -21,38 +46,57 @@ function formatDate(iso: string) {
   }
 }
 
-function nodeCount(item: HistoryItem) {
-  return Array.isArray(item.flow_json?.nodes) ? item.flow_json.nodes.length : 0;
-}
-
 export default function HistoryPage() {
   const [items, setItems] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [viewItem, setViewItem] = useState<HistoryItem | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<number | null>(null);
 
-  useEffect(() => {
-    setItems(getHistory());
-    return () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    };
-  }, []);
-
-  function showToast(msg: string) {
+  const showToast = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(""), 1800);
+  }, []);
+
+  useEffect(() => {
+    const clientId = getClientId();
+    fetch(`/api/results?client_id=${encodeURIComponent(clientId)}`)
+      .then((r) => r.json())
+      .then((d) => setItems(d.results ?? []))
+      .catch(() => showToast("履歴の読み込みに失敗しました"))
+      .finally(() => setLoading(false));
+
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, [showToast]);
+
+  async function handleDelete(id: string) {
+    const clientId = getClientId();
+    const res = await fetch(
+      `/api/results/${id}?client_id=${encodeURIComponent(clientId)}`,
+      { method: "DELETE" }
+    );
+    if (res.ok) {
+      setItems((prev) => prev.filter((x) => x.id !== id));
+      if (viewItem?.id === id) setViewItem(null);
+      showToast("削除しました");
+    } else {
+      showToast("削除に失敗しました");
+    }
   }
 
-  function handleDelete(id: string) {
-    setItems(deleteResult(id));
-    if (viewItem?.id === id) setViewItem(null);
-    showToast("削除しました");
-  }
-
-  function handleClearAll() {
-    clearHistory();
+  async function handleClearAll() {
+    const clientId = getClientId();
+    await Promise.all(
+      items.map((item) =>
+        fetch(`/api/results/${item.id}?client_id=${encodeURIComponent(clientId)}`, {
+          method: "DELETE",
+        })
+      )
+    );
     setItems([]);
     setConfirmClear(false);
     showToast("全件削除しました");
@@ -71,10 +115,7 @@ export default function HistoryPage() {
           explanation: item.explanation,
         })
       );
-      sessionStorage.setItem(
-        "text2flow:lastConfig",
-        JSON.stringify(item.config)
-      );
+      sessionStorage.setItem("text2flow:lastConfig", JSON.stringify(item.config));
     } catch {
       // ignore
     }
@@ -86,12 +127,12 @@ export default function HistoryPage() {
       <div className={styles.header}>
         <div>
           <div className={styles.title}>保存済み結果</div>
-          <div className={styles.sub}>{items.length} 件保存されています</div>
+          <div className={styles.sub}>
+            {loading ? "読み込み中..." : `${items.length} 件保存されています`}
+          </div>
         </div>
         <div className={styles.headerActions}>
-          <a className={styles.navBtn} href="/input">
-            ← 入力
-          </a>
+          <a className={styles.navBtn} href="/input">← 入力</a>
           {items.length > 0 && (
             <button
               className={styles.dangerBtn}
@@ -104,28 +145,28 @@ export default function HistoryPage() {
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {!loading && items.length === 0 ? (
         <div className={styles.empty}>
           <div className={styles.emptyTitle}>保存された結果がありません</div>
           <div className={styles.emptyText}>
             結果ページで「保存する」を押すとここに表示されます。
           </div>
-          <a className={styles.link} href="/input">
-            入力画面へ →
-          </a>
+          <a className={styles.link} href="/input">入力画面へ →</a>
         </div>
       ) : (
         <div className={styles.list}>
           {items.map((item) => (
             <div key={item.id} className={styles.card}>
               <div className={styles.cardMeta}>
-                <span className={styles.date}>{formatDate(item.saved_at)}</span>
-                <span className={styles.badge}>{nodeCount(item)} ノード</span>
+                <span className={styles.date}>{formatDate(item.created_at)}</span>
                 <span className={styles.badge}>
-                  {item.config.orientation === "LR" ? "横" : "縦"}
+                  {Array.isArray(item.flow_json?.nodes) ? item.flow_json.nodes.length : 0} ノード
                 </span>
                 <span className={styles.badge}>
-                  {item.config.detail === "detailed" ? "詳細" : "ざっくり"}
+                  {item.config?.orientation === "LR" ? "横" : "縦"}
+                </span>
+                <span className={styles.badge}>
+                  {item.config?.detail === "detailed" ? "詳細" : "ざっくり"}
                 </span>
               </div>
 
@@ -180,7 +221,7 @@ export default function HistoryPage() {
                 ✕
               </button>
             </div>
-            <div className={styles.modalMeta}>{formatDate(viewItem.saved_at)}</div>
+            <div className={styles.modalMeta}>{formatDate(viewItem.created_at)}</div>
             <div className={styles.modalDiagram}>
               <MermaidRenderer mermaid={viewItem.mermaid} />
             </div>
